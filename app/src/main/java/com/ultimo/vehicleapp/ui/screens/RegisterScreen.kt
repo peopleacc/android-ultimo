@@ -50,7 +50,17 @@ fun RegisterScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(PrimaryBlue)
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF2D336B),
+                        Color(0xFF7886C7),
+                        Color(0xFFA9B5DF),
+                        Color(0xFFE8F9FF),
+                        Color(0xFFFFF2F2)
+                    )
+                )
+            )
     ) {
         Column(
             modifier = Modifier
@@ -61,7 +71,9 @@ fun RegisterScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(2.dp, PrimaryBlue, RoundedCornerShape(40.dp)),
                 shape = RoundedCornerShape(40.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
