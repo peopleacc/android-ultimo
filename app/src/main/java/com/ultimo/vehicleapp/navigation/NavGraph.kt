@@ -4,12 +4,14 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.ultimo.vehicleapp.ViewModels.SessionViewModel
 import com.ultimo.vehicleapp.ui.screens.*
 
 @Composable
 fun NavGraph(
     navController: NavHostController,
-    startDestination: String = Screen.Login.route
+    startDestination: String,
+    sessionViewModel:  SessionViewModel
 ) {
     NavHost(
         navController = navController,
@@ -17,6 +19,7 @@ fun NavGraph(
     ) {
         composable(Screen.Login.route) {
             LoginScreen(
+                sessionViewModel = sessionViewModel,
                 onNavigate = { route ->
                     navController.navigate(route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
@@ -29,36 +32,38 @@ fun NavGraph(
                 }
             )
         }
-        
+
         composable(Screen.Register.route) {
             RegisterScreen(
                 onNavigate = { route ->
                     navController.navigate(route)
                 },
                 onRegister = {
-                    navController.navigate(Screen.Home.route) {
+                    navController.navigate(Screen.Login.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
                 }
             )
         }
-        
+
         composable(Screen.Home.route) {
             HomeScreen(
+                sessionViewModel = sessionViewModel,
                 onNavigate = { route ->
                     navController.navigate(route)
                 }
             )
         }
-        
+
         composable(Screen.Order.route) {
             ServiceOrderScreen(
-                onNavigate = { route ->
+                sessionViewModel = sessionViewModel,
+                onNavigate = { route ->5
                     navController.navigate(route)
                 }
             )
         }
-        
+
         composable(Screen.Tracking.route) {
             OrderTrackingScreen(
                 onNavigate = { route ->
@@ -66,7 +71,7 @@ fun NavGraph(
                 }
             )
         }
-        
+
         composable(Screen.Orders.route) {
             OrderHistoryScreen(
                 onNavigate = { route ->
@@ -74,7 +79,7 @@ fun NavGraph(
                 }
             )
         }
-        
+
         composable(Screen.Payment.route) {
             PaymentScreen(
                 onNavigate = { route ->
@@ -82,28 +87,31 @@ fun NavGraph(
                 }
             )
         }
-        
+
         composable(Screen.Profile.route) {
             ProfileScreen(
+                sessionViewModel = sessionViewModel,
                 onNavigate = { route ->
                     navController.navigate(route)
                 },
                 onLogout = {
+                    sessionViewModel.logout()
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
                     }
                 }
             )
         }
-        
+
         composable(Screen.PersonalInfo.route) {
             PersonalInformationScreen(
+                sessionViewModel = sessionViewModel,
                 onNavigate = { route ->
                     navController.navigate(route)
                 }
             )
         }
-        
+
         composable(Screen.HelpSupport.route) {
             HelpSupportScreen(
                 onNavigate = { route ->

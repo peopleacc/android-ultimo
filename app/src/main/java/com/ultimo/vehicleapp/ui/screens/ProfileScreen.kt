@@ -1,9 +1,6 @@
 package com.ultimo.vehicleapp.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -18,12 +15,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ultimo.vehicleapp.ViewModels.SessionViewModel
 import com.ultimo.vehicleapp.navigation.Screen
-import com.ultimo.vehicleapp.ui.components.CustomButton
 import com.ultimo.vehicleapp.ui.components.CustomCard
 import com.ultimo.vehicleapp.ui.components.CustomCardWithBorder
 import com.ultimo.vehicleapp.ui.theme.*
@@ -40,17 +38,48 @@ data class MenuItem(
 
 @Composable
 fun ProfileScreen(
+    sessionViewModel: SessionViewModel,
     onNavigate: (String) -> Unit,
     onLogout: (() -> Unit)? = null
 ) {
+    val user by sessionViewModel.user.collectAsState()
+    val isLoading by sessionViewModel.isLoading.collectAsState()
+    val token by sessionViewModel.token.collectAsState()
+
+    // Refresh user data jika user null tapi token ada (misalnya setelah login)
+    LaunchedEffect(Unit) {
+        val currentToken = token
+        if (user == null && !currentToken.isNullOrEmpty()) {
+            sessionViewModel.fetchUserDataAfterLogin(currentToken)
+        }
+    }
+
+    // Jika masih loading dari server
+    if (isLoading) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    // Jika user null → token invalid → logout
+    if (user == null) {
+        Text("User tidak ditemukan / token invalid")
+        return
+    }
+
+    // 🔥 User sudah ada → gunakan langsung
     val userProfile = mapOf(
-        "name" to "John Doe",
-        "email" to "john.doe@example.com",
-        "phone" to "+62 812-3456-7890",
-        "address" to "Jl. Gatot Subroto No. 123, Jakarta",
-        "memberSince" to "Jan 2024",
-        "totalOrders" to 5,
-        "completedOrders" to 4
+        "name" to (user?.nama ?: "-"),
+        "email" to (user?.email ?: "-"),
+        "phone" to (user?.phone ?: "-"),
+        "address" to (user?.address ?: "-"),
+        "memberSince" to "2025", // Jika ingin dinamis, kasih dari API
+        "totalOrders" to 0,
+        "completedOrders" to 0
     )
 
     var notificationsEnabled by remember { mutableStateOf(true) }
@@ -98,6 +127,7 @@ fun ProfileScreen(
                         color = Color.White
                     )
                 }
+
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // Profile Card
@@ -108,15 +138,17 @@ fun ProfileScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                Surface(
-                    shape = CircleShape,
-                    color = PrimaryBlue,
-                    modifier = Modifier.size(80.dp),
-                    border = BorderStroke(4.dp, BackgroundGray)
-                ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = PrimaryBlue,
+                            modifier = Modifier.size(80.dp)
+                        ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
-                                    text = userProfile["name"]?.toString()?.split(" ")?.map { it[0] }?.joinToString("") ?: "JD",
+                                    text = userProfile["name"]?.toString()
+                                        ?.split(" ")
+                                        ?.mapNotNull { it.firstOrNull()?.toString() }
+                                        ?.joinToString("") ?: "JD",
                                     fontSize = 32.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
@@ -138,7 +170,7 @@ fun ProfileScreen(
                                 color = TextSecondary
                             )
                         }
-                        IconButton(onClick = { /* Edit */ }) {
+                        IconButton(onClick = { /* Edit Profile */ }) {
                             Icon(
                                 imageVector = Icons.Default.Edit,
                                 contentDescription = "Edit",
@@ -155,12 +187,11 @@ fun ProfileScreen(
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = userProfile["totalOrders"]?.toString() ?: "0",
+                                text = userProfile["totalOrders"].toString(),
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = PrimaryBlue
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "Total Orders",
                                 fontSize = 12.sp,
@@ -169,12 +200,11 @@ fun ProfileScreen(
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = userProfile["completedOrders"]?.toString() ?: "0",
+                                text = userProfile["completedOrders"].toString(),
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = PrimaryBlue
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "Completed",
                                 fontSize = 12.sp,
@@ -186,6 +216,7 @@ fun ProfileScreen(
             }
         }
 
+        // 🔹 Content
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -194,7 +225,6 @@ fun ProfileScreen(
         ) {
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Contact Information
             Text(
                 text = "Contact Information",
                 fontSize = 20.sp,
@@ -211,9 +241,9 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(16.dp))
                 ContactInfoRow(Icons.Default.LocationOn, "Address", userProfile["address"] as String)
             }
+
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Settings Menu
             Text(
                 text = "Settings",
                 fontSize = 20.sp,
@@ -221,6 +251,7 @@ fun ProfileScreen(
                 color = TextPrimary,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
+
             menuItems.forEach { item ->
                 CustomCardWithBorder(
                     onClick = {
@@ -287,11 +318,9 @@ fun ProfileScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Logout Button
+            // 🔹 Logout
             CustomCardWithBorder(
-                onClick = {
-                    onLogout?.invoke()
-                },
+                onClick = { onLogout?.invoke() },
                 borderColor = ErrorRed.copy(alpha = 0.3f),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -330,7 +359,7 @@ fun ProfileScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                textAlign = TextAlign.Center
             )
         }
     }
@@ -361,19 +390,9 @@ fun ContactInfoRow(
         }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                fontSize = 12.sp,
-                color = TextSecondary
-            )
+            Text(text = label, fontSize = 12.sp, color = TextSecondary)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = value,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = TextPrimary
-            )
+            Text(text = value, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
         }
     }
 }
-

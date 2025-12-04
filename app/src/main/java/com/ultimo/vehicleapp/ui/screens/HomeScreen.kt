@@ -14,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,13 +26,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.ultimo.vehicleapp.R
+import com.ultimo.vehicleapp.ViewModels.SessionViewModel
 import com.ultimo.vehicleapp.navigation.Screen
 import com.ultimo.vehicleapp.ui.components.CustomButton
 import com.ultimo.vehicleapp.ui.components.CustomCard
 import com.ultimo.vehicleapp.ui.components.CustomCardWithBorder
 import com.ultimo.vehicleapp.ui.theme.*
+import com.ultimo.vehicleapp.ViewModels.ProductViewModel
 
 data class SeatDesign(
     val id: Int,
@@ -51,14 +56,23 @@ data class ActiveOrder(
 
 @Composable
 fun HomeScreen(
-    onNavigate: (String) -> Unit
-) {
-    val seatDesigns = listOf(
-        SeatDesign(1, "Premium Leather Black", "Rp 3.500.000", R.drawable.black, "Best Seller", WarningOrange),
-        SeatDesign(2, "Sporty Red Accent", "Rp 4.200.000", R.drawable.red, "New", SuccessGreen),
-        SeatDesign(3, "Luxury Beige Supreme", "Rp 5.000.000", R.drawable.beige, "Premium", PrimaryBlue),
-        SeatDesign(4, "Racing Carbon Style", "Rp 4.800.000", R.drawable.racing, "Popular", WarningOrange)
-    )
+    onNavigate: (String) -> Unit,
+    sessionViewModel: SessionViewModel,
+    productViewModel: ProductViewModel = viewModel()
+
+    ) {
+    val products by productViewModel.products.collectAsState()
+
+    val seatDesigns = products.map { p ->
+        SeatDesign(
+            id = p.product_id,
+            name = p.nama_layanan,
+            price = p.harga.toString(),
+            imageResId = R.drawable.black,
+            badge = "New",
+            badgeColor = PrimaryBlue
+        )
+    }
 
     val activeOrders = listOf(
         ActiveOrder("ORD-001", "Premium Leather Installation", "In Progress", 65, "2 hours")

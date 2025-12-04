@@ -5,7 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -14,7 +13,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.Image
@@ -23,16 +21,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
+import com.ultimo.vehicleapp.Config.ApiClient
+import com.ultimo.vehicleapp.Controller.LoginResponse
+import com.ultimo.vehicleapp.Controller.RegisterRequest
+import com.ultimo.vehicleapp.Controller.RegisterResponse
 import com.ultimo.vehicleapp.R
 import com.ultimo.vehicleapp.navigation.Screen
 import com.ultimo.vehicleapp.ui.components.CustomButton
 import com.ultimo.vehicleapp.ui.components.CustomTextField
 import com.ultimo.vehicleapp.ui.theme.*
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
 
 @Composable
 fun RegisterScreen(
@@ -213,10 +218,49 @@ fun RegisterScreen(
                         CustomButton(
                             text = "Sign Up",
                             onClick = {
-                                if (fullName.isNotEmpty() && email.isNotEmpty() && 
-                                    phone.isNotEmpty() && password.isNotEmpty() && agreeTerms) {
-                                    onRegister()
+                                if (email.isBlank() || password.isBlank() || phone.isBlank() || fullName.isBlank()) {
+                                    Toast.makeText(
+                                        context,
+                                        "Semua field wajib diisi",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    return@CustomButton
                                 }
+
+                                    // ✅ phone tidak perlu .toInt() karena di RegisterRequest sudah String
+                                val request = RegisterRequest(fullName, email, phone, password)
+
+                                ApiClient.instance.register(request)
+                                    .enqueue(object : Callback<RegisterResponse> {
+                                        override fun onResponse(
+                                            call: Call<RegisterResponse>,
+                                            response: Response<RegisterResponse>
+                                        ) {
+                                            if (response.isSuccessful && response.body()?.status == "success") {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Registrasi berhasil!",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                                onRegister() // ✅ navigasi ke login atau home sesuai alur kamu
+                                            } else {
+                                                Toast.makeText(
+                                                    context,
+                                                    response.body()?.message ?: "Registrasi gagal",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }
+
+                                        override fun onFailure(call: Call<RegisterResponse>, t: Throwable) {
+                                            Toast.makeText(
+                                                context,
+                                                "Error: ${t.localizedMessage}",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    })
+
                             },
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -243,49 +287,13 @@ fun RegisterScreen(
                         }
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Divider
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Divider(modifier = Modifier.weight(1f))
-                            Text(
-                                text = "OR",
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                fontSize = 14.sp,
-                                color = TextTertiary
-                            )
-                            Divider(modifier = Modifier.weight(1f))
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
 
-                        // Social Login
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            SocialLoginButton(
-                                iconResId = R.drawable.chrome,
-                                onClick = { 
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://share.google/Q3W7uuTBHpzcKNWBc"))
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
-                            SocialLoginButton(
-                                iconResId = R.drawable.instagram,
-                                onClick = { 
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.instagram.com/ultimatemodified?igsh=MzZyOTJ0anZ5dnVn"))
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
                         }
                     }
                 }
             }
         }
     }
-}
+
 
 

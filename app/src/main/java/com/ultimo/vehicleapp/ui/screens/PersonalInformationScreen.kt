@@ -28,6 +28,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.ultimo.vehicleapp.ViewModels.SessionViewModel
 import com.ultimo.vehicleapp.navigation.Screen
 import com.ultimo.vehicleapp.ui.components.CustomButton
 import com.ultimo.vehicleapp.ui.components.CustomCard
@@ -36,13 +37,26 @@ import com.ultimo.vehicleapp.ui.theme.*
 
 @Composable
 fun PersonalInformationScreen(
-    onNavigate: (String) -> Unit
+    onNavigate: (String) -> Unit,
+    sessionViewModel: SessionViewModel
 ) {
-    var name by remember { mutableStateOf("John Doe") }
-    var email by remember { mutableStateOf("john.doe@example.com") }
-    var phone by remember { mutableStateOf("+62 812-3456-7890") }
-    var address by remember { mutableStateOf("Jl. Gatot Subroto No. 123, Jakarta") }
-    var dateOfBirth by remember { mutableStateOf("1990-01-15") }
+    val user by sessionViewModel.user.collectAsState()
+    val isLoading by sessionViewModel.isLoading.collectAsState()
+    val token by sessionViewModel.token.collectAsState()
+
+    LaunchedEffect(Unit) {
+        val currentToken = token
+        if (user == null && !currentToken.isNullOrEmpty()) {
+            sessionViewModel.fetchUserDataAfterLogin(currentToken)
+        }
+    }
+
+
+    var name by remember { mutableStateOf(user?.nama ?: "-") }
+    var email by remember { mutableStateOf(user?.email ?: "-") }
+    var phone by remember { mutableStateOf(user?.phone ?: "-") }
+    var address by remember { mutableStateOf(user?.address ?: "-") }
+    var dateOfBirth by remember { mutableStateOf(user?.nama ?: "-") }
     var profileImageUri by remember { mutableStateOf<Uri?>(null) }
     
     val imagePickerLauncher = rememberLauncherForActivityResult(
