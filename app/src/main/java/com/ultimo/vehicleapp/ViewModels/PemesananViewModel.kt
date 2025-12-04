@@ -2,15 +2,12 @@ package com.ultimo.vehicleapp.ViewModels
 
 import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.State
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ultimo.vehicleapp.Controller.PemesananInsertRepository
 import com.ultimo.vehicleapp.Controller.PemesananRepository
-import com.ultimo.vehicleapp.Controller.ProductRepository
+import com.ultimo.vehicleapp.Controller.PemesananUserRepository
 import com.ultimo.vehicleapp.model.PemesananInsert
-import com.ultimo.vehicleapp.model.ProductLayanan
 import com.ultimo.vehicleapp.model.pemesanan
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,12 +22,29 @@ class PemesananViewModel : ViewModel() {
         loadPemesanan()
     }
 
+    /**
+     * Load semua pemesanan (biasanya untuk admin)
+     */
     private fun loadPemesanan() {
         viewModelScope.launch {
             _pemesanan.value = PemesananRepository.getAllPemesanan()
         }
     }
 
+    /**
+     * Load pemesanan milik user tertentu (newest first)
+     */
+    fun loadPemesananForUser(userId: Int, limit: Int = 20) {
+        viewModelScope.launch {
+            _pemesanan.value =
+                PemesananUserRepository.getAllPemesananUser(userId.toString()).reversed().take(limit)
+        }
+    }
+
+    /**
+     * Insert pemesanan baru
+     * Return: pemesanan terbaru user (atau null jika gagal)
+     */
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun insertOrder(
         userId: Int,
@@ -38,7 +52,8 @@ class PemesananViewModel : ViewModel() {
         statuspengerjaan: String,
         selectedMaterial: Int,
         totalPrice: Int
-    ): Boolean {
+    ): pemesanan? {
+
         val currentDate = java.time.LocalDate.now().toString()
 
         val data = PemesananInsert(
@@ -50,7 +65,17 @@ class PemesananViewModel : ViewModel() {
             tanggal_pesan = currentDate
         )
 
-        return PemesananInsertRepository.insertPemesanan(data)
+        // Insert
+        val success = PemesananInsertRepository.insertPemesanan(data)
+
+        if (!success) return null
+
+        // Reload daftar pemesanan user
+        loadPemesananForUser(userId)
+
+        // Ambil pemesanan terbaru user (1 data saja)
+        val latestList = PemesananUserRepository.getAllPemesananUser(userId.toString())
+
+        return latestList.firstOrNull()
     }
 }
-

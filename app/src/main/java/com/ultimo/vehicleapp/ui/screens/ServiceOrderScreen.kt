@@ -34,6 +34,7 @@ import com.ultimo.vehicleapp.ui.components.CustomCardWithBorder
 import com.ultimo.vehicleapp.ui.theme.*
 import com.ultimo.vehicleapp.ViewModels.ProductViewModel
 import com.ultimo.vehicleapp.ViewModels.SessionViewModel
+import com.ultimo.vehicleapp.ViewModels.PemesananViewModel
 import com.ultimo.vehicleapp.ViewModels.MaterialRepository
 import com.ultimo.vehicleapp.model.Material_List
 import kotlinx.coroutines.coroutineScope
@@ -41,6 +42,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import com.ultimo.vehicleapp.Controller.PemesananInsertRepository
 import com.ultimo.vehicleapp.Controller.PemesananRepository
+import com.ultimo.vehicleapp.Controller.PemesananUserRepository
 import com.ultimo.vehicleapp.model.pemesanan
 import com.ultimo.vehicleapp.model.PemesananInsert
 
@@ -75,8 +77,17 @@ fun ServiceOrderScreen(
     val materialList by materialViewModel.Material_List.collectAsState()
 
     val currentUser by sessionViewModel.user.collectAsState()
+    val pemesananViewModel: PemesananViewModel = viewModel()
+    val userOrders by pemesananViewModel.pemesanan.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     var currentOrder by remember { mutableStateOf<pemesanan?>(null) }
+
+    // When session user becomes available, load their pemesanan via the viewmodel
+    LaunchedEffect(currentUser?.id) {
+        currentUser?.id?.let { id ->
+            pemesananViewModel.loadPemesananForUser(id, limit = 20)
+        }
+    }
 
     val designs = products.map { p ->
         Design(
@@ -141,6 +152,32 @@ fun ServiceOrderScreen(
                         color = Color.White
                     )
                 }
+                    // if there are existing orders for this user, show latest status
+                    val latest = userOrders.firstOrNull()
+                    if (latest != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color.White.copy(alpha = 0.08f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(text = "Latest Order #${latest.pesanan_id}", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text(text = "Status: ${latest.status_pengerjaan ?: "-"}", color = Color.White)
+                                }
+                                Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = Color.White)
+                            }
+                        }
+                    }
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Progress Steps: 3 tahapan (Design -> Material -> Review)
@@ -230,7 +267,7 @@ fun ServiceOrderScreen(
                         onContinue = {
                             // Insert order and then load the user's latest order
                             coroutineScope.launch {
-                                val userId = currentUser?.id?.toInt() ?: return@launch
+                                val userId = currentUser?.id ?: return@launch
                                 val currentDate = java.time.LocalDate.now().toString()
 
                                 val data = PemesananInsert(
@@ -242,12 +279,27 @@ fun ServiceOrderScreen(
                                     tanggal_pesan = currentDate
                                 )
 
-                                val success = PemesananInsertRepository.insertPemesanan(data)
-                                if (success) {
-                                    val all = PemesananRepository.getAllPemesanan()
-                                    currentOrder = all.findLast { it.user_id == userId } ?: all.lastOrNull()
-                                    // If status indicates waiting to payment, navigate to payment
-                                    if (currentOrder?.status_pengerjaan?.equals("waiting to payment", true) == true) {
+                                val inserted = PemesananInsertRepository.insertPemesanan(data) // return row yang sudah complete
+
+                                if (inserted != null) {
+
+                                    // Refresh data list
+                                    pemesananViewModel.loadPemesananForUser(userId, limit = 20)
+
+                                    // Ambil ulang semua pesanan user
+                                    val freshList = PemesananUserRepository.getAllPemesananUser(userId.toString())
+
+                                    // Cari pending order dari hasil query terbaru
+                                    val pendingOrder = freshList.firstOrNull {
+                                        it.status_pengerjaan.equals("pending", ignoreCase = true)
+                                    }
+
+                                    // Jika tidak ada pending, pakai hasil insert (yang sudah lengkap)
+                                    currentOrder = (pendingOrder ?: inserted) as pemesanan?
+
+                                    // Cek jika statusnya "waiting to payment"
+                                    val status = currentOrder?.status_pengerjaan?.lowercase()
+                                    if (status == "waiting to payment" || status == "waiting for payment") {
                                         onNavigate(Screen.Payment.route)
                                     }
                                 }
