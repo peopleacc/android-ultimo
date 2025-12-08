@@ -10,7 +10,7 @@ data class pemesanan(
     val tanggal_pesan: String? = null,
     val tanggal_pengerjaan:String? = null,
     val estimasi_selesai: String? = null,
-    val total_estimasi_harga: Double,
+    val total_estimasi_harga: Int? = null,
     val status_pengerjaan: String? = null,
     val metode_pembayaran: String? = null,
     val status_pembayaran: String? = null,

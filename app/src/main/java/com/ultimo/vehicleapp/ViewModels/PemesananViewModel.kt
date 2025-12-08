@@ -4,9 +4,11 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ultimo.vehicleapp.Controller.PemesananDeleteRepository
 import com.ultimo.vehicleapp.Controller.PemesananInsertRepository
 import com.ultimo.vehicleapp.Controller.PemesananRepository
 import com.ultimo.vehicleapp.Controller.PemesananUserRepository
+import com.ultimo.vehicleapp.Controller.TotalSelesai
 import com.ultimo.vehicleapp.model.PemesananInsert
 import com.ultimo.vehicleapp.model.pemesanan
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,12 +36,13 @@ class PemesananViewModel : ViewModel() {
     /**
      * Load pemesanan milik user tertentu (newest first)
      */
-    fun loadPemesananForUser(userId: Int, limit: Int = 20) {
+    fun loadPemesananForUser(userId: Int, limit: Int = 1) {
         viewModelScope.launch {
             _pemesanan.value =
                 PemesananUserRepository.getAllPemesananUser(userId.toString()).reversed().take(limit)
         }
     }
+
 
     /**
      * Insert pemesanan baru
@@ -77,5 +80,19 @@ class PemesananViewModel : ViewModel() {
         val latestList = PemesananUserRepository.getAllPemesananUser(userId.toString())
 
         return latestList.firstOrNull()
+    }
+
+    /**
+     * Delete pemesanan by pesanan_id
+     * Return: true if successful, false otherwise
+     */
+    fun deletePemesanan(pesananId: Int, userId: Int) {
+        viewModelScope.launch {
+            val success = PemesananDeleteRepository.deletePemesananById(pesananId)
+            if (success) {
+                // Reload pemesanan after deletion
+                loadPemesananForUser(userId, limit = 20)
+            }
+        }
     }
 }

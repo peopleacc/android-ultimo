@@ -203,12 +203,12 @@ fun LoginScreen(
                                                 if (userData != null) {
                                                     // Set user data dulu sebelum save token
                                                     sessionViewModel.setUserData(userData)
-                                                    // Simpan token setelah user data di-set
-                                                    sessionViewModel.saveSessionToken(token)
+                                                    // Simpan token dengan remember me preference
+                                                    sessionViewModel.saveSessionToken(token, rememberMe)
                                                 } else {
                                                     // Jika user data tidak ada di response, fetch dari API
-                                                    // Simpan token dulu
-                                                    sessionViewModel.saveSessionToken(token)
+                                                    // Simpan token dengan remember me preference
+                                                    sessionViewModel.saveSessionToken(token, rememberMe)
                                                     // Lalu fetch user data
                                                     sessionViewModel.fetchUserDataAfterLogin(token)
                                                 }

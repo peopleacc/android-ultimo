@@ -22,7 +22,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ultimo.vehicleapp.ViewModels.ProgressViewModel
+import com.ultimo.vehicleapp.ViewModels.SessionViewModel
 import com.ultimo.vehicleapp.navigation.Screen
+import com.ultimo.vehicleapp.Controller.AllProgressRepository
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import com.ultimo.vehicleapp.ui.components.CustomButton
 import com.ultimo.vehicleapp.ui.components.CustomCard
 import com.ultimo.vehicleapp.ui.components.CustomCardWithBorder
@@ -52,49 +58,112 @@ data class Order(
 
 @Composable
 fun OrderTrackingScreen(
-    onNavigate: (String) -> Unit
+    onNavigate: (String) -> Unit,
+    sessionViewModel: SessionViewModel,
+    progressViewModel: ProgressViewModel = viewModel()
 ) {
-    val orders = listOf(
-        Order(
-            id = "ORD-001",
-            service = "Premium Leather Installation",
-            status = "In Progress",
-            progress = 65,
-            currentStep = "Installation",
-            estimatedTime = "2 hours",
-            startDate = "Nov 2, 2025 09:00 AM",
-            estimatedCompletion = "Nov 2, 2025 03:00 PM",
-            timeline = listOf(
-                TimelineItem(1, "Order Confirmed", "Your order has been confirmed", "09:00 AM", true, icon = Icons.Default.CheckCircle),
-                TimelineItem(2, "Material Preparation", "Preparing materials for installation", "10:00 AM", true, icon = Icons.Default.Inventory),
-                TimelineItem(3, "Installation In Progress", "Installing your new seat covers", "11:30 AM", false, true, icon = Icons.Default.Build),
-                TimelineItem(4, "Quality Check", "Final inspection and quality assurance", "02:00 PM", false, icon = Icons.Default.Star),
-                TimelineItem(5, "Ready for Pickup", "Your vehicle is ready", "03:00 PM", false, icon = Icons.Default.CheckCircle)
-            )
-        ),
-        Order(
-            id = "ORD-002",
-            service = "Sports Racing Design",
-            status = "In Progress",
-            progress = 45,
-            currentStep = "Material Preparation",
-            estimatedTime = "4 hours",
-            startDate = "Nov 3, 2025 10:00 AM",
-            estimatedCompletion = "Nov 3, 2025 04:00 PM",
-            timeline = listOf(
-                TimelineItem(1, "Order Confirmed", "Your order has been confirmed", "10:00 AM", true, icon = Icons.Default.CheckCircle),
-                TimelineItem(2, "Material Preparation", "Preparing materials for installation", "11:00 AM", false, true, icon = Icons.Default.Inventory),
-                TimelineItem(3, "Installation In Progress", "Installing your new seat covers", "01:00 PM", false, icon = Icons.Default.Build),
-                TimelineItem(4, "Quality Check", "Final inspection and quality assurance", "03:00 PM", false, icon = Icons.Default.Star),
-                TimelineItem(5, "Ready for Pickup", "Your vehicle is ready", "04:00 PM", false, icon = Icons.Default.CheckCircle)
-            )
+    val currentUser by sessionViewModel.user.collectAsState()
+    
+    // Card data from loadProgressForUser
+    val progressList by progressViewModel.progress.collectAsState()
+    
+    // Timeline data from loadAllProgressForUser (we'll load this separately)
+    var allProgressList by remember { mutableStateOf<List<com.ultimo.vehicleapp.model.Progress>>(emptyList()) }
+    val coroutineScope = rememberCoroutineScope()
+
+    // Load card data (loadProgressForUser)
+    LaunchedEffect(currentUser?.id) {
+        currentUser?.id?.let { id ->
+            progressViewModel.loadProgressForUser(id, limit = 10)
+        }
+    }
+
+    // Load timeline data (loadAllProgressForUser) - load all progress for timeline
+    LaunchedEffect(currentUser?.id) {
+        currentUser?.id?.let { id ->
+            coroutineScope.launch {
+                val dataProgress = AllProgressRepository
+                    .getAllProgressUser(id.toString())
+                    .reversed()
+                    .take(50)
+                allProgressList = dataProgress
+            }
+        }
+    }
+
+    // Convert Progress to Order for card display
+    val orders = progressList.mapNotNull { progress ->
+        val pesanan = progress.t_pemesanan ?: return@mapNotNull null
+        val serviceName = pesanan.m_product_layanan?.nama_layanan ?: "Service"
+        val orderId = "ORD-${pesanan.pesanan_id}"
+        val status = pesanan.status_pengerjaan ?: "Unknown"
+        val progressPercentage = progress.presentase_progress
+        val startDate = pesanan.tanggal_pesan ?: "N/A"
+        val estimatedCompletion = pesanan.estimasi_selesai ?: "N/A"
+        val keterangan = progress.keterangan_status ?: ""
+
+        // Get timeline from allProgressList based on pesanan_id
+        val timelineProgressList = allProgressList.filter { 
+            it.t_pemesanan?.pesanan_id == pesanan.pesanan_id 
+        }
+        
+        // Generate timeline from keterangan_status (only use keterangan_status from allProgressList)
+        val timeline = generateTimelineFromKeterangan(
+            keteranganList = timelineProgressList.mapNotNull { it.keterangan_status },
+            startDate = startDate,
+            estimatedCompletion = estimatedCompletion,
+            progressPercentage = progressPercentage
         )
-    )
 
-    var selectedOrderId by remember { mutableStateOf(orders[0].id) }
-    var showOrderSelector by remember { mutableStateOf(false) }
+        // Find current active step
+        val currentStep = timeline.find { it.active }?.title ?: timeline.firstOrNull()?.title ?: "Order Confirmed"
 
-    val selectedOrder = orders.find { it.id == selectedOrderId } ?: orders[0]
+        // Calculate estimated remaining time
+        val estimatedTime = calculateEstimatedTime(progressPercentage, estimatedCompletion)
+
+        Order(
+            id = orderId,
+            service = serviceName,
+            status = status,
+            progress = progressPercentage,
+            currentStep = currentStep,
+            estimatedTime = estimatedTime,
+            startDate = startDate,
+            estimatedCompletion = estimatedCompletion,
+            timeline = timeline
+        )
+    }
+
+    var selectedOrderId by remember { mutableStateOf<String?>(null) }
+
+    // Initialize selectedOrderId when orders are loaded
+    LaunchedEffect(orders) {
+        if (selectedOrderId == null && orders.isNotEmpty()) {
+            selectedOrderId = orders.first().id
+        }
+    }
+
+    val selectedOrder = orders.find { it.id == selectedOrderId } ?: orders.firstOrNull()
+
+    // If no orders, show empty state
+    if (orders.isEmpty() || selectedOrder == null) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BackgroundPink)
+                .padding(bottom = 80.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "No orders found",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Medium,
+                color = TextSecondary
+            )
+        }
+        return
+    }
 
     Column(
         modifier = Modifier
@@ -135,69 +204,7 @@ fun OrderTrackingScreen(
                 }
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Order Selector
-                CustomButton(
-                    text = "Pilih Pesanan (${orders.size} pesanan aktif)",
-                    onClick = { showOrderSelector = !showOrderSelector },
-                    modifier = Modifier.fillMaxWidth(),
-                    icon = if (showOrderSelector) Icons.Default.ExpandLess else Icons.Default.ExpandMore
-                )
-                Spacer(modifier = Modifier.height(8.dp))
 
-                if (showOrderSelector) {
-                        orders.forEach { order ->
-                            CustomCardWithBorder(
-                                onClick = {
-                                    selectedOrderId = order.id
-                                    showOrderSelector = false
-                                },
-                                borderColor = if (selectedOrderId == order.id) PrimaryBlue else BackgroundGray,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = order.id,
-                                            fontSize = 12.sp,
-                                            color = TextSecondary
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = order.service,
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = TextPrimary
-                                        )
-                                    }
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = when {
-                                            order.progress >= 80 -> SuccessGreen.copy(alpha = 0.2f)
-                                            order.progress >= 50 -> InfoBlue.copy(alpha = 0.2f)
-                                            else -> WarningOrange.copy(alpha = 0.2f)
-                                        }
-                                    ) {
-                                        Text(
-                                            text = "${order.progress}%",
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = when {
-                                                order.progress >= 80 -> SuccessGreen
-                                                order.progress >= 50 -> InfoBlue
-                                                else -> WarningOrange
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                }
 
                 // Order Info Card
                 CustomCard(
@@ -463,6 +470,124 @@ fun TimelineItemView(
                 )
             }
         }
+    }
+}
+
+// Helper function to generate timeline from keterangan_status
+fun generateTimelineFromKeterangan(
+    keteranganList: List<String>,
+    startDate: String,
+    estimatedCompletion: String,
+    progressPercentage: Int
+): List<TimelineItem> {
+    val timeline = mutableListOf<TimelineItem>()
+    
+    // Order Confirmed - always completed
+    timeline.add(
+        TimelineItem(
+            id = 1,
+            title = "Order Confirmed",
+            description = "Your order has been confirmed",
+            time = startDate,
+            completed = true,
+            icon = Icons.Default.CheckCircle
+        )
+    )
+    
+    // Use keterangan_status to create timeline items
+    // Each keterangan_status becomes a timeline item
+    var itemId = 2
+    keteranganList.forEachIndexed { index, keterangan ->
+        if (keterangan.isNotBlank()) {
+            val isLastKeterangan = index == keteranganList.size - 1
+            val isCompleted = !isLastKeterangan || progressPercentage >= 100
+            val isActive = isLastKeterangan && progressPercentage < 100
+            
+            timeline.add(
+                TimelineItem(
+                    id = itemId++,
+                    title = "Progress Update ${index + 1}",
+                    description = keterangan,
+                    time = startDate,
+                    completed = isCompleted,
+                    active = isActive,
+                    icon = Icons.Default.Build
+                )
+            )
+        }
+    }
+    
+    // If no keterangan, add default steps based on progress
+    if (keteranganList.isEmpty()) {
+        // Material Preparation - completed if progress > 20
+        timeline.add(
+            TimelineItem(
+                id = 2,
+                title = "Material Preparation",
+                description = "Preparing materials for installation",
+                time = startDate,
+                completed = progressPercentage > 20,
+                active = progressPercentage > 20 && progressPercentage <= 40,
+                icon = Icons.Default.Inventory
+            )
+        )
+        
+        // Installation In Progress - active if progress > 40 and < 80
+        timeline.add(
+            TimelineItem(
+                id = 3,
+                title = "Installation In Progress",
+                description = "Installing your new seat covers",
+                time = startDate,
+                completed = progressPercentage > 80,
+                active = progressPercentage > 40 && progressPercentage <= 80,
+                icon = Icons.Default.Build
+            )
+        )
+        
+        // Quality Check - completed if progress > 80
+        timeline.add(
+            TimelineItem(
+                id = 4,
+                title = "Quality Check",
+                description = "Final inspection and quality assurance",
+                time = startDate,
+                completed = progressPercentage > 90,
+                active = progressPercentage > 80 && progressPercentage < 100,
+                icon = Icons.Default.Star
+            )
+        )
+    }
+    
+    // Ready for Pickup - completed if progress = 100
+    timeline.add(
+        TimelineItem(
+            id = itemId,
+            title = "Ready for Pickup",
+            description = "Your vehicle is ready",
+            time = estimatedCompletion,
+            completed = progressPercentage >= 100,
+            icon = Icons.Default.CheckCircle
+        )
+    )
+    
+    return timeline
+}
+
+// Helper function to calculate estimated remaining time
+fun calculateEstimatedTime(progress: Int, estimatedCompletion: String): String {
+    if (progress >= 100) {
+        return "Completed"
+    }
+    if (estimatedCompletion.isNotEmpty() && estimatedCompletion != "N/A") {
+        return "Est. $estimatedCompletion"
+    }
+    val remaining = 100 - progress
+    return when {
+        remaining > 75 -> "3-4 days"
+        remaining > 50 -> "2-3 days"
+        remaining > 25 -> "1-2 days"
+        else -> "Less than 1 day"
     }
 }
 

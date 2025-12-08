@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -23,6 +24,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,11 +38,13 @@ import com.ultimo.vehicleapp.ui.components.CustomCard
 import com.ultimo.vehicleapp.ui.components.CustomCardWithBorder
 import com.ultimo.vehicleapp.ui.theme.*
 import com.ultimo.vehicleapp.ViewModels.ProductViewModel
+import com.ultimo.vehicleapp.ViewModels.PemesananViewModel
+import com.ultimo.vehicleapp.ViewModels.ProgressViewModel
 
 data class SeatDesign(
     val id: Int,
     val name: String,
-    val price: String,
+    val price: Int,
     val imageResId: Int,
     val badge: String,
     val badgeColor: Color
@@ -58,25 +62,60 @@ data class ActiveOrder(
 fun HomeScreen(
     onNavigate: (String) -> Unit,
     sessionViewModel: SessionViewModel,
-    productViewModel: ProductViewModel = viewModel()
-
+    productViewModel: ProductViewModel = viewModel(),
+    pemesananViewModel: PemesananViewModel = viewModel(),
+    progressViewModel: ProgressViewModel = viewModel()
     ) {
     val products by productViewModel.products.collectAsState()
+    val currentUser by sessionViewModel.user.collectAsState()
+    val userOrders by pemesananViewModel.pemesanan.collectAsState()
+    val progressList by progressViewModel.progress.collectAsState()
+
+    // Load pemesanan for user
+    LaunchedEffect(currentUser?.id) {
+        currentUser?.id?.let { id ->
+            pemesananViewModel.loadPemesananForUser(id, limit = 20)
+            progressViewModel.loadProgressForUser(id, limit = 20)
+        }
+    }
+
+    // Function to check status and navigate
+    fun handleOrderNavigation() {
+        val latestPendingOrder = userOrders.firstOrNull { order ->
+            order.status_pengerjaan?.lowercase() == "pending" || 
+            order.status_pengerjaan?.lowercase() == "proses" ||
+            order.status_pengerjaan?.lowercase() == "waiting for payment"
+        }
+
+        if (latestPendingOrder != null) {
+            onNavigate(Screen.OrderDetail.route)
+        } else {
+            onNavigate(Screen.Order.route)
+        }
+    }
+    
+    // Cek apakah ada order dengan status "waiting for payment"
+    val waitingPaymentOrder = userOrders.firstOrNull { order ->
+        order.status_pengerjaan?.lowercase() == "waiting for payment" ||
+        order.status_pengerjaan?.lowercase() == "waiting to payment"
+    }
 
     val seatDesigns = products.map { p ->
         SeatDesign(
             id = p.product_id,
             name = p.nama_layanan,
-            price = p.harga.toString(),
+            price = p.harga?.toInt() ?: 0,
             imageResId = R.drawable.black,
             badge = "New",
             badgeColor = PrimaryBlue
         )
     }
 
-    val activeOrders = listOf(
-        ActiveOrder("ORD-001", "Premium Leather Installation", "In Progress", 65, "2 hours")
-    )
+    // Filter progress dengan status pending, proses, atau waiting for payment
+    val activeProgressOrders = progressList.filter { progress ->
+        val status = progress.t_pemesanan?.status_pengerjaan?.lowercase()
+        status == "pending" || status == "proses" || status == "waiting for payment" || status == "waiting to payment"
+    }
 
     Column(
         modifier = Modifier
@@ -140,7 +179,6 @@ fun HomeScreen(
                 ) {
                     StatCard("5", "Completed", modifier = Modifier.weight(1f))
                     StatCard("1", "Active", modifier = Modifier.weight(1f))
-                    StatCard("4.8", "Rating", modifier = Modifier.weight(1f), showStar = true)
                 }
             }
         }
@@ -154,7 +192,7 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // Active Order
-            if (activeOrders.isNotEmpty()) {
+            if (activeProgressOrders.isNotEmpty()) {
                 Text(
                     text = "Active Order",
                     fontSize = 20.sp,
@@ -162,86 +200,115 @@ fun HomeScreen(
                     color = TextPrimary,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
-                activeOrders.forEach { order ->
-                    CustomCardWithBorder(
-                        onClick = { onNavigate(Screen.Tracking.route) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                activeProgressOrders.forEach { progress ->
+                    val pesanan = progress.t_pemesanan
+                    if (pesanan != null) {
+                        val serviceName = pesanan.m_product_layanan?.nama_layanan ?: "Service"
+                        val orderId = "ORD-${pesanan.pesanan_id}"
+                        val status = pesanan.status_pengerjaan ?: "Unknown"
+                        val progressPercentage = progress.presentase_progress
+                        val estimatedTime = pesanan.estimasi_selesai ?: "TBD"
+                        
+                        CustomCardWithBorder(
+                            onClick = { 
+                                when (status.lowercase()) {
+                                    "waiting for payment", "waiting to payment" -> {
+                                        onNavigate(Screen.Payment.route)
+                                    }
+                                    else -> {
+                                        onNavigate(Screen.OrderDetail.route)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = orderId,
+                                        fontSize = 12.sp,
+                                        color = TextSecondary
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = serviceName,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = TextPrimary
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = BackgroundGray
+                                ) {
+                                    Text(
+                                        text = status,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        fontSize = 12.sp,
+                                        color = PrimaryBlue
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
                                 Text(
-                                    text = order.id,
+                                    text = "Progress",
                                     fontSize = 12.sp,
                                     color = TextSecondary
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = order.service,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = TextPrimary
-                                )
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = BackgroundGray
-                            ) {
-                                Text(
-                                    text = order.status,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    text = "$progressPercentage%",
                                     fontSize = 12.sp,
                                     color = PrimaryBlue
                                 )
                             }
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Progress",
-                                fontSize = 12.sp,
-                                color = TextSecondary
+                            Spacer(modifier = Modifier.height(8.dp))
+                            LinearProgressIndicator(
+                                progress = progressPercentage / 100f,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp)),
+                                color = PrimaryBlue,
+                                trackColor = Gray200
                             )
-                            Text(
-                                text = "${order.progress}%",
-                                fontSize = 12.sp,
-                                color = PrimaryBlue
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = order.progress / 100f,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .clip(RoundedCornerShape(4.dp)),
-                            color = PrimaryBlue,
-                            trackColor = Gray200
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.AccessTime,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = TextSecondary
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Est. ${order.estimatedTime} remaining",
-                                fontSize = 12.sp,
-                                color = TextSecondary
-                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.AccessTime,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = TextSecondary
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (estimatedTime != "TBD") "Est. selesai: $estimatedTime" else "Estimasi: $estimatedTime",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                            if (progress.keterangan_status != null) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = progress.keterangan_status,
+                                    fontSize = 11.sp,
+                                    color = TextSecondary,
+                                    fontStyle = FontStyle.Italic
+                                )
+                            }
                         }
                     }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
             }
+
+
 
             // Catalog
             Row(
@@ -264,7 +331,7 @@ fun HomeScreen(
                         color = TextPrimary
                     )
                 }
-                TextButton(onClick = { /* See all */ }) {
+                TextButton(onClick = { onNavigate(Screen.Catalog.route) }) {
                     Text(
                         text = "View All",
                         fontSize = 14.sp,
@@ -288,16 +355,22 @@ fun HomeScreen(
                 items(seatDesigns) { design ->
                     SeatDesignCard(
                         design = design,
-                        onClick = { onNavigate(Screen.Order.route) }
+                        onClick = { 
+                            // Navigate to CatalogScreen with selected product
+                            onNavigate("${Screen.Catalog.route}/${design.id}")
+                        }
                     )
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
 
+            // Tombol Lakukan Pembayaran (jika ada order dengan status waiting for payment)
+
+
             // CTA Button
             CustomButton(
                 text = "Order New Service",
-                onClick = { onNavigate(Screen.Order.route) },
+                onClick = { handleOrderNavigation() },
                 modifier = Modifier.fillMaxWidth(),
                 icon = Icons.Default.ShoppingCart
             )
@@ -417,7 +490,7 @@ fun SeatDesignCard(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = design.price,
+                text = design.price.toString(),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = PrimaryBlue

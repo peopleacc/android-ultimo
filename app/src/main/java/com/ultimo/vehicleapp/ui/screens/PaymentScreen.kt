@@ -180,41 +180,7 @@ fun PaymentScreen(
             Spacer(modifier = Modifier.height(24.dp))
             
             // Submit Button
-            Button(
-                onClick = {
-                    orderConfirmed = true
-                },
-                enabled = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .border(3.dp, Color(0xFF0D1282), RoundedCornerShape(12.dp)),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF0D1282),
-                    contentColor = Color.White,
-                    disabledContainerColor = Color.Gray,
-                    disabledContentColor = Color.White
-                ),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Submit",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
+
         }
 
         // Bottom Action Bar

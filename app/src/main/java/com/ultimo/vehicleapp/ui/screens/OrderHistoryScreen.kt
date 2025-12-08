@@ -24,6 +24,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ultimo.vehicleapp.ViewModels.PemesananViewModel
+import com.ultimo.vehicleapp.ViewModels.ProductViewModel
+import com.ultimo.vehicleapp.ViewModels.SessionViewModel
 import com.ultimo.vehicleapp.navigation.Screen
 import com.ultimo.vehicleapp.ui.components.CustomCardWithBorder
 import com.ultimo.vehicleapp.ui.theme.*
@@ -44,24 +48,70 @@ data class OrderHistoryItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrderHistoryScreen(
-    onNavigate: (String) -> Unit
+    onNavigate: (String) -> Unit,
+    sessionViewModel: SessionViewModel,
+    pemesananViewModel: PemesananViewModel = viewModel(),
+    productViewModel: ProductViewModel = viewModel()
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    var filterStatus by remember { mutableStateOf("all") }
 
-    val orders = listOf(
-        OrderHistoryItem("ORD-001", "Premium Leather Installation", "Nov 2, 2025", "In Progress", InfoBlue, 2500000, "QRIS", "Paid", "3-4 days", 65),
-        OrderHistoryItem("ORD-002", "Sports Racing Design", "Oct 28, 2025", "Completed", SuccessGreen, 3500000, "Cash", "Paid", "3-4 days", 100),
-        OrderHistoryItem("ORD-003", "Fabric Cover Standard", "Oct 15, 2025", "Completed", SuccessGreen, 1800000, "QRIS", "Paid", "2-3 days", 100),
-        OrderHistoryItem("ORD-004", "Custom Design Premium", "Sep 20, 2025", "Completed", SuccessGreen, 4200000, "QRIS", "Paid", "4-5 days", 100)
-    )
+    val currentUser by sessionViewModel.user.collectAsState()
+    val pemesananList by pemesananViewModel.pemesanan.collectAsState()
+    val products by productViewModel.products.collectAsState()
 
+    // Load pemesanan for user
+    LaunchedEffect(currentUser?.id) {
+        currentUser?.id?.let { id ->
+            pemesananViewModel.loadPemesananForUser(id, limit = 50)
+        }
+    }
+
+    // Filter only selesai status and convert pemesanan to OrderHistoryItem
+    val orders = remember(pemesananList, products) {
+        pemesananList
+            .filter { pemesanan ->
+                val status = pemesanan.status_pengerjaan?.lowercase()?.trim()
+                status == "selesai" || status == "completed"
+            }
+            .mapNotNull { pemesanan ->
+                // Get product name from product_id
+                val product = products.find { it.product_id == pemesanan.product_id }
+                val serviceName = product?.nama_layanan ?: "Service"
+                val orderId = "ORD-${pemesanan.pesanan_id}"
+                val status = pemesanan.status_pengerjaan ?: "Unknown"
+                val date = pemesanan.tanggal_pesan ?: "N/A"
+                val totalPrice = pemesanan.total_estimasi_harga ?: 0
+                val paymentMethod = pemesanan.metode_pembayaran ?: "N/A"
+                val paymentStatus = pemesanan.status_pembayaran ?: "Unpaid"
+                val estimatedTime = pemesanan.estimasi_selesai ?: "N/A"
+
+                // Determine status color
+                val statusColor = when (status.lowercase()) {
+                    "completed", "selesai" -> SuccessGreen
+                    "in progress", "proses" -> InfoBlue
+                    "pending" -> PrimaryBlue
+                    else -> TextSecondary
+                }
+
+                OrderHistoryItem(
+                    id = orderId,
+                    service = serviceName,
+                    date = date,
+                    status = status,
+                    statusColor = statusColor,
+                    price = totalPrice,
+                    paymentMethod = paymentMethod,
+                    paymentStatus = paymentStatus,
+                    estimatedTime = estimatedTime,
+                    progress = 100 // Completed orders have 100% progress
+                )
+            }
+    }
+
+    // Since we only show completed orders, filter only by search
     val filteredOrders = orders.filter { order ->
-        val matchesSearch = order.id.contains(searchQuery, ignoreCase = true) ||
-                order.service.contains(searchQuery, ignoreCase = true)
-        val matchesFilter = filterStatus == "all" ||
-                order.status.equals(filterStatus, ignoreCase = true)
-        matchesSearch && matchesFilter
+        order.id.contains(searchQuery, ignoreCase = true) ||
+        order.service.contains(searchQuery, ignoreCase = true)
     }
 
     Column(
@@ -145,31 +195,16 @@ fun OrderHistoryScreen(
         ) {
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Filter Tabs
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf("all", "in progress", "completed").forEach { filter ->
-                    FilterChip(
-                        selected = filterStatus == filter,
-                        onClick = { filterStatus = filter },
-                        label = {
-                            Text(
-                                text = filter.replaceFirstChar { it.uppercaseChar() },
-                                fontSize = 14.sp
-                            )
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = PrimaryBlue,
-                            selectedLabelColor = Color.White,
-                            containerColor = Color.White,
-                            labelColor = PrimaryBlue
-                        )
-                    )
-                }
+            // Show section title for completed orders
+            if (filteredOrders.isNotEmpty()) {
+                Text(
+                    text = "Completed Orders",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
             }
-            Spacer(modifier = Modifier.height(16.dp))
 
             // Orders List
             if (filteredOrders.isEmpty()) {
@@ -265,36 +300,6 @@ fun OrderHistoryCard(
                     color = order.statusColor
                 )
             }
-        }
-
-        if (order.status == "In Progress") {
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Progress",
-                    fontSize = 12.sp,
-                    color = TextSecondary
-                )
-                Text(
-                    text = "${order.progress}%",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = PrimaryBlue
-                )
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            LinearProgressIndicator(
-                progress = order.progress / 100f,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(4.dp)),
-                color = PrimaryBlue,
-                trackColor = Gray200
-            )
         }
 
         Spacer(modifier = Modifier.height(12.dp))

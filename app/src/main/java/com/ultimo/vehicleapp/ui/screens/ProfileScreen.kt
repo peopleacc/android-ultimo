@@ -45,12 +45,33 @@ fun ProfileScreen(
     val user by sessionViewModel.user.collectAsState()
     val isLoading by sessionViewModel.isLoading.collectAsState()
     val token by sessionViewModel.token.collectAsState()
+    
+    var hasTriedFetch by remember { mutableStateOf(false) }
 
-    // Refresh user data jika user null tapi token ada (misalnya setelah login)
-    LaunchedEffect(Unit) {
+    // Refresh user data jika user null tapi token ada (hanya sekali)
+    LaunchedEffect(token) {
         val currentToken = token
-        if (user == null && !currentToken.isNullOrEmpty()) {
+        if (user == null && !currentToken.isNullOrEmpty() && !isLoading && !hasTriedFetch) {
+            hasTriedFetch = true
             sessionViewModel.fetchUserDataAfterLogin(currentToken)
+        }
+    }
+    
+    // Reset hasTriedFetch jika user sudah ada
+    LaunchedEffect(user) {
+        if (user != null) {
+            hasTriedFetch = false
+        }
+    }
+    
+    // Redirect ke Login jika tidak ada user setelah loading selesai
+    LaunchedEffect(user, isLoading) {
+        // Tunggu sampai loading selesai
+        if (!isLoading) {
+            // Jika user null (baik token ada atau tidak), redirect ke login
+            if (user == null) {
+                onNavigate(Screen.Login.route)
+            }
         }
     }
 
@@ -65,15 +86,25 @@ fun ProfileScreen(
         return
     }
 
-    // Jika user null → token invalid → logout
+    // Jika user null, tidak render apapun (akan redirect ke login)
     if (user == null) {
-        Text("User tidak ditemukan / token invalid")
+        // Tampilkan loading sementara redirect
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
         return
     }
+    
+    // Jika user masih null setelah fetch (mungkin token invalid atau network error)
+    // Tapi token masih ada, jadi biarkan user tetap bisa melihat UI dengan data default
+    // Jangan langsung return error
 
-    // 🔥 User sudah ada → gunakan langsung
+    // 🔥 User data - gunakan data dari user jika ada, jika tidak gunakan placeholder
     val userProfile = mapOf(
-        "name" to (user?.nama ?: "-"),
+        "name" to (user?.nama ?: "User"),
         "email" to (user?.email ?: "-"),
         "phone" to (user?.phone ?: "-"),
         "address" to (user?.address ?: "-"),

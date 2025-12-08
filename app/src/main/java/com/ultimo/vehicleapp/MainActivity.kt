@@ -32,11 +32,16 @@ class MainActivity : ComponentActivity() {
                 val isLoading by sessionViewModel.isLoading.collectAsState()
                 val token by sessionViewModel.token.collectAsState()
 
-                // Remember startDestination dengan key yang stabil - hanya update jika token benar-benar berubah
-                // Gunakan derivedStateOf untuk mencegah recomposition yang tidak perlu
-                val startDestination = remember(token) {
-                    if (token.isNullOrEmpty()) Screen.Login.route else Screen.Home.route
-                }
+                // Gunakan derivedStateOf untuk menghindari recomposition yang tidak perlu
+                // Hanya update startDestination setelah loading selesai
+                val startDestination = derivedStateOf {
+                    // Tunggu sampai loading selesai sebelum menentukan destination
+                    if (isLoading) {
+                        Screen.Login.route // Temporary value saat loading
+                    } else {
+                        if (token.isNullOrEmpty()) Screen.Login.route else Screen.Home.route
+                    }
+                }.value
 
                 Surface(
                     modifier = Modifier.fillMaxSize(),
