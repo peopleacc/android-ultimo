@@ -9,6 +9,11 @@ import com.ultimo.vehicleapp.Controller.PemesananInsertRepository
 import com.ultimo.vehicleapp.Controller.PemesananRepository
 import com.ultimo.vehicleapp.Controller.PemesananUserRepository
 import com.ultimo.vehicleapp.Controller.TotalSelesai
+import com.ultimo.vehicleapp.Controller.TotalProses
+import com.ultimo.vehicleapp.Controller.TotalPending
+import com.ultimo.vehicleapp.Controller.getTotalSelesai
+import com.ultimo.vehicleapp.Controller.getTotalProses
+import com.ultimo.vehicleapp.Controller.getTotalPending
 import com.ultimo.vehicleapp.model.PemesananInsert
 import com.ultimo.vehicleapp.model.pemesanan
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +24,18 @@ class PemesananViewModel : ViewModel() {
 
     private val _pemesanan = MutableStateFlow<List<pemesanan>>(emptyList())
     val pemesanan: StateFlow<List<pemesanan>> = _pemesanan
+
+    // StateFlow untuk total selesai
+    private val _totalSelesai = MutableStateFlow(0)
+    val totalSelesai: StateFlow<Int> = _totalSelesai
+
+    // StateFlow untuk total proses
+    private val _totalProses = MutableStateFlow(0)
+    val totalProses: StateFlow<Int> = _totalProses
+
+    // StateFlow untuk total pending (pending + waiting for order)
+    private val _totalPending = MutableStateFlow(0)
+    val totalPending: StateFlow<Int> = _totalPending
 
     init {
         loadPemesanan()
@@ -40,6 +57,37 @@ class PemesananViewModel : ViewModel() {
         viewModelScope.launch {
             _pemesanan.value =
                 PemesananUserRepository.getAllPemesananUser(userId.toString()).reversed().take(limit)
+        }
+    }
+
+    /**
+     * Load total pemesanan selesai untuk user tertentu
+     */
+    fun loadTotalSelesai(userId: Int) {
+        viewModelScope.launch {
+            val result = getTotalSelesai(userId.toString())
+            _totalSelesai.value = result.firstOrNull()?.total_selesai ?: 0
+        }
+    }
+
+    /**
+     * Load total pemesanan proses untuk user tertentu
+     */
+    fun loadTotalProses(userId: Int) {
+        viewModelScope.launch {
+            val result = getTotalProses(userId.toString())
+            _totalProses.value = result.firstOrNull()?.total_proses ?: 0
+        }
+    }
+
+    /**
+     * Load total pemesanan pending (pending + waiting for order) untuk user tertentu
+     * Data berasal dari PemesananController
+     */
+    fun loadTotalPending(userId: Int) {
+        viewModelScope.launch {
+            val result = getTotalPending(userId.toString())
+            _totalPending.value = result.firstOrNull()?.total_pending ?: 0
         }
     }
 
@@ -96,3 +144,4 @@ class PemesananViewModel : ViewModel() {
         }
     }
 }
+

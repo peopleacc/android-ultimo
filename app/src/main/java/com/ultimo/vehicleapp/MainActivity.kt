@@ -77,7 +77,8 @@ class MainActivity : ComponentActivity() {
                                         Screen.Home.route,
                                         Screen.Orders.route,
                                         Screen.Tracking.route,
-                                        Screen.Profile.route
+                                        Screen.Profile.route,
+                                        Screen.OrderDetail.route
                                     )
                                 ) {
                                     CustomBottomNavigation(

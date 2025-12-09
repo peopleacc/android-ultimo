@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ultimo.vehicleapp.ViewModels.ProgressViewModel
 import com.ultimo.vehicleapp.ViewModels.SessionViewModel
+import com.ultimo.vehicleapp.ViewModels.PemesananViewModel
 import com.ultimo.vehicleapp.navigation.Screen
 import com.ultimo.vehicleapp.Controller.AllProgressRepository
 import kotlinx.coroutines.launch
@@ -60,12 +61,16 @@ data class Order(
 fun OrderTrackingScreen(
     onNavigate: (String) -> Unit,
     sessionViewModel: SessionViewModel,
-    progressViewModel: ProgressViewModel = viewModel()
+    progressViewModel: ProgressViewModel = viewModel(),
+    pemesananViewModel: PemesananViewModel = viewModel()
 ) {
     val currentUser by sessionViewModel.user.collectAsState()
     
     // Card data from loadProgressForUser
     val progressList by progressViewModel.progress.collectAsState()
+    
+    // Pemesanan data for pending orders
+    val userOrders by pemesananViewModel.pemesanan.collectAsState()
     
     // Timeline data from loadAllProgressForUser (we'll load this separately)
     var allProgressList by remember { mutableStateOf<List<com.ultimo.vehicleapp.model.Progress>>(emptyList()) }
@@ -75,6 +80,7 @@ fun OrderTrackingScreen(
     LaunchedEffect(currentUser?.id) {
         currentUser?.id?.let { id ->
             progressViewModel.loadProgressForUser(id, limit = 10)
+            pemesananViewModel.loadPemesananForUser(id, limit = 20)
         }
     }
 
@@ -89,6 +95,12 @@ fun OrderTrackingScreen(
                 allProgressList = dataProgress
             }
         }
+    }
+    
+    // Filter pending orders from t_pemesanan (status: pending, waiting for order)
+    val pendingOrders = userOrders.filter { order ->
+        val status = order.status_pengerjaan?.lowercase()
+        status == "pending" || status == "waiting" || status == "waiting for order"
     }
 
     // Convert Progress to Order for card display
@@ -145,8 +157,8 @@ fun OrderTrackingScreen(
 
     val selectedOrder = orders.find { it.id == selectedOrderId } ?: orders.firstOrNull()
 
-    // If no orders, show empty state
-    if (orders.isEmpty() || selectedOrder == null) {
+    // If no orders (both progress and pending), show empty state
+    if (orders.isEmpty() && pendingOrders.isEmpty()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -204,103 +216,197 @@ fun OrderTrackingScreen(
                 }
                 Spacer(modifier = Modifier.height(24.dp))
 
-
-
-                // Order Info Card
-                CustomCard(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                // Order Info Card - kondisi berdasarkan status
+                // Jika ada pending order: tampilkan card dari PemesananController
+                // Jika ada proses order: tampilkan card dari ProgressController
+                
+                if (pendingOrders.isNotEmpty()) {
+                    // ========== PENDING ORDER CARD (dari PemesananController) ==========
+                    val firstPendingOrder = pendingOrders.first()
+                    CustomCard(
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = selectedOrder.id,
-                                fontSize = 12.sp,
-                                color = TextSecondary
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = selectedOrder.service,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "ORD-${firstPendingOrder.pesanan_id}",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Order #${firstPendingOrder.pesanan_id}",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFFFF8E1) // Light amber
+                            ) {
+                                Text(
+                                    text = firstPendingOrder.status_pengerjaan ?: "Pending",
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFF57C00) // Amber
+                                )
+                            }
                         }
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = BackgroundGray
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = selectedOrder.status,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                fontSize = 12.sp,
-                                color = PrimaryBlue
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Overall Progress",
-                            fontSize = 12.sp,
-                            color = TextSecondary
-                        )
-                        Text(
-                            text = "${selectedOrder.progress}%",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = PrimaryBlue
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LinearProgressIndicator(
-                        progress = selectedOrder.progress / 100f,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(12.dp)
-                            .clip(RoundedCornerShape(6.dp)),
-                        color = PrimaryBlue,
-                        trackColor = Gray200
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Divider()
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text(
-                                text = "Current Step",
+                                text = "Status",
                                 fontSize = 12.sp,
                                 color = TextSecondary
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = selectedOrder.currentStep,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = TextPrimary
+                                text = "Menunggu Konfirmasi",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFF57C00)
                             )
                         }
-                        Column(horizontalAlignment = Alignment.End) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Divider()
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Tanggal Pesan",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = firstPendingOrder.tanggal_pesan ?: "N/A",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextPrimary
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "Total Harga",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Rp ${String.format("%,d", firstPendingOrder.total_estimasi_harga ?: 0)}",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = PrimaryBlue
+                                )
+                            }
+                        }
+                    }
+                } else if (selectedOrder != null) {
+                    // ========== PROSES ORDER CARD (dari ProgressController) ==========
+                    CustomCard(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = selectedOrder.id,
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = selectedOrder.service,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = BackgroundGray
+                            ) {
+                                Text(
+                                    text = selectedOrder.status,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    fontSize = 12.sp,
+                                    color = PrimaryBlue
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
                             Text(
-                                text = "Est. Remaining",
+                                text = "Overall Progress",
                                 fontSize = 12.sp,
                                 color = TextSecondary
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = selectedOrder.estimatedTime,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
+                                text = "${selectedOrder.progress}%",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
                                 color = PrimaryBlue
                             )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = selectedOrder.progress / 100f,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(12.dp)
+                                .clip(RoundedCornerShape(6.dp)),
+                            color = PrimaryBlue,
+                            trackColor = Gray200
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Divider()
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Current Step",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = selectedOrder.currentStep,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextPrimary
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "Est. Remaining",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = selectedOrder.estimatedTime,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = PrimaryBlue
+                                )
+                            }
                         }
                     }
                 }
@@ -315,56 +421,166 @@ fun OrderTrackingScreen(
         ) {
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text(
-                text = "Progress Timeline",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-
-            selectedOrder.timeline.forEachIndexed { index, item ->
-                TimelineItemView(item = item, isLast = index == selectedOrder.timeline.size - 1)
+            // ========== PENDING ORDERS SECTION (dari t_pemesanan) ==========
+            if (pendingOrders.isNotEmpty()) {
+                Text(
+                    text = "Pending Orders",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
+                pendingOrders.forEach { order ->
+                    val serviceName = "Order #${order.pesanan_id}"
+                    val orderId = "ORD-${order.pesanan_id}"
+                    val status = order.status_pengerjaan ?: "Pending"
+                    val tanggalPesan = order.tanggal_pesan ?: "N/A"
+                    val totalHarga = order.total_estimasi_harga ?: 0
+                    
+                    CustomCardWithBorder(
+                        onClick = { onNavigate(Screen.OrderDetail.route) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = orderId,
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = serviceName,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextPrimary
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFFFF8E1) // Light yellow/amber background
+                            ) {
+                                Text(
+                                    text = status,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFF57C00) // Amber text
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Tanggal Pesan",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = tanggalPesan,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextPrimary
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "Total",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Rp ${String.format("%,d", totalHarga)}",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = PrimaryBlue
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.AccessTime,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color(0xFFF57C00)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Menunggu konfirmasi dari admin",
+                                fontSize = 12.sp,
+                                color = Color(0xFFF57C00)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+                
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            // ========== PROGRESS TIMELINE SECTION (untuk order yang sudah proses) ==========
+            if (selectedOrder != null) {
+                Text(
+                    text = "Progress Timeline",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
 
-            // Estimated Completion
-            CustomCard(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                selectedOrder.timeline.forEachIndexed { index, item ->
+                    TimelineItemView(item = item, isLast = index == selectedOrder.timeline.size - 1)
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Estimated Completion
+                CustomCard(
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = PrimaryBlue
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.AccessTime,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier
-                                .size(48.dp)
-                                .padding(12.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            text = "Estimated Completion",
-                            fontSize = 12.sp,
-                            color = TextSecondary
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = selectedOrder.estimatedCompletion,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
+                        Surface(
+                            shape = CircleShape,
                             color = PrimaryBlue
-                        )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccessTime,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .padding(12.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = "Estimated Completion",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = selectedOrder.estimatedCompletion,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryBlue
+                            )
+                        }
                     }
                 }
             }

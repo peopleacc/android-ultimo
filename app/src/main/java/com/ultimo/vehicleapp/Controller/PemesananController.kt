@@ -101,6 +101,12 @@ object TotalProses {
         val total_proses: Int
     )
 }
+
+object TotalPending {
+    data class DataPending(
+        val total_pending: Int
+    )
+}
 suspend fun getTotalSelesai(userId: String): List<TotalSelesai.DataSelesai> {
     return try {
         // Menggunakan select(head=true) dan count() adalah cara paling efisien
@@ -125,7 +131,7 @@ suspend fun getTotalSelesai(userId: String): List<TotalSelesai.DataSelesai> {
     }
 }
 
-suspend fun getTotalProses(userId: String): List<TotalSelesai.DataSelesai> {
+suspend fun getTotalProses(userId: String): List<TotalProses.DataProses> {
     return try {
         // Menggunakan select(head=true) dan count() adalah cara paling efisien
         // untuk mendapatkan jumlah baris tanpa mengambil datanya.
@@ -133,7 +139,7 @@ suspend fun getTotalProses(userId: String): List<TotalSelesai.DataSelesai> {
             .select(head = true) {
                 filter {
                     eq("user_id", userId)
-                    eq("status_pengerjaan", "selesai")
+                    eq("status_pengerjaan", "proses")
                 }
                 count(Count.EXACT)
             }
@@ -141,10 +147,43 @@ suspend fun getTotalProses(userId: String): List<TotalSelesai.DataSelesai> {
         // Jumlah data (count) tersedia di dalam response
         val totalCount = response.countOrNull()?.toInt() ?: 0
 
-        // Fungsi ini mengharapkan List<DataSelesai>, jadi kita bungkus hasilnya.
-        listOf(TotalSelesai.DataSelesai(total_selesai = totalCount))
+        // Fungsi ini mengharapkan List<DataProses>, jadi kita bungkus hasilnya.
+        listOf(TotalProses.DataProses(total_proses = totalCount))
     } catch (e: Exception) {
-        println("Error getting total selesai: ${'$'}{e.message}")
+        println("Error getting total proses: ${e.message}")
         emptyList() // Kembalikan list kosong jika terjadi error
+    }
+}
+
+suspend fun getTotalPending(userId: String): List<TotalPending.DataPending> {
+    return try {
+        // Mengambil jumlah pesanan dengan status pending
+        val responsePending = supabase.from("t_pemesanan")
+            .select(head = true) {
+                filter {
+                    eq("user_id", userId)
+                    eq("status_pengerjaan", "pending")
+                }
+                count(Count.EXACT)
+            }
+        val pendingCount = responsePending.countOrNull()?.toInt() ?: 0
+
+        // Mengambil jumlah pesanan dengan status waiting for order
+        val responseWaiting = supabase.from("t_pemesanan")
+            .select(head = true) {
+                filter {
+                    eq("user_id", userId)
+                    eq("status_pengerjaan", "waiting for order")
+                }
+                count(Count.EXACT)
+            }
+        val waitingCount = responseWaiting.countOrNull()?.toInt() ?: 0
+
+        // Total pending + waiting for order
+        val totalCount = pendingCount + waitingCount
+        listOf(TotalPending.DataPending(total_pending = totalCount))
+    } catch (e: Exception) {
+        println("Error getting total pending: ${e.message}")
+        emptyList()
     }
 }

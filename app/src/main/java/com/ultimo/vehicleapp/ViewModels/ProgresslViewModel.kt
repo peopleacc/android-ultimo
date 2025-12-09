@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ultimo.vehicleapp.Controller.AllProgressRepository
 import com.ultimo.vehicleapp.Controller.ProgressRepository
+import com.ultimo.vehicleapp.Controller.TotalProsesProgress
+import com.ultimo.vehicleapp.Controller.getTotalProsesFromProgress
 import com.ultimo.vehicleapp.model.Progress
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +21,10 @@ class ProgressViewModel : ViewModel() {
 
     private val _completedProgress = MutableStateFlow<List<Progress>>(emptyList())
     val completedProgress: StateFlow<List<Progress>> = _completedProgress
+
+    // StateFlow untuk total proses dari progress
+    private val _totalProsesProgress = MutableStateFlow(0)
+    val totalProsesProgress: StateFlow<Int> = _totalProsesProgress
 
     /**
      * Load progress pemesanan user
@@ -81,4 +87,15 @@ class ProgressViewModel : ViewModel() {
             _completedProgress.value = dataProgress
         }
     }
+
+    /**
+     * Load total proses dari ProgressController (status_pengerjaan = "proses")
+     */
+    fun loadTotalProsesFromProgress(userId: Int) {
+        viewModelScope.launch {
+            val result = getTotalProsesFromProgress(userId.toString())
+            _totalProsesProgress.value = result.firstOrNull()?.total_proses_progress ?: 0
+        }
+    }
 }
+

@@ -6,18 +6,20 @@ import androidx.lifecycle.viewModelScope
 import com.ultimo.vehicleapp.Config.ApiClient
 import com.ultimo.vehicleapp.Controller.SessionResponse
 import com.ultimo.vehicleapp.Controller.UserData
-import com.ultimo.vehicleapp.data.SessionManager
+import com.ultimo.vehicleapp.data.UserDatabaseHelper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 
 class SessionViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val sessionManager = SessionManager(application.applicationContext)
+    // SQLite Database Helper
+    private val dbHelper = UserDatabaseHelper(application.applicationContext)
 
     private val _token = MutableStateFlow<String?>(null)
     val token: StateFlow<String?> get() = _token
@@ -27,33 +29,23 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> get() = _isLoading
+
+    private val _rememberMe = MutableStateFlow(false)
+    val rememberMe: StateFlow<Boolean> get() = _rememberMe
     
     @Volatile
     private var isInitialized = false
 
     init {
-        // Load session dari local storage saat aplikasi dibuka (hanya sekali)
+        // Load session dari SQLite saat aplikasi dibuka (hanya sekali)
         if (!isInitialized) {
             synchronized(this) {
                 if (!isInitialized) {
                     isInitialized = true
                     viewModelScope.launch {
                         try {
-                            // Load token dari local storage (selalu load, tidak peduli remember me)
-                            val savedToken = sessionManager.getSessionToken().first()
-                            if (!savedToken.isNullOrEmpty()) {
-                                // Set token dulu agar MainActivity bisa langsung navigate ke Home
-                                _token.value = savedToken
-                                // Set loading ke false dulu agar UI bisa render
-                                _isLoading.value = false
-                                // Fetch user data di background (tidak blocking)
-                                fetchUserData(savedToken)
-                            } else {
-                                _token.value = null
-                                _isLoading.value = false
-                            }
+                            loadUserFromDatabase()
                         } catch (e: Exception) {
-                            // Handle error gracefully
                             _isLoading.value = false
                         }
                     }
@@ -62,38 +54,137 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    // Simpan token login ke local storage (selalu simpan, tidak peduli remember me)
+    /**
+     * Load user data dari SQLite database
+     */
+    private suspend fun loadUserFromDatabase() {
+        withContext(Dispatchers.IO) {
+            // Cek apakah ada user tersimpan dengan Remember Me aktif
+            val userSession = dbHelper.getUser()
+            
+            withContext(Dispatchers.Main) {
+                if (userSession != null && userSession.rememberMe) {
+                    // Ada user tersimpan dengan Remember Me aktif
+                    _token.value = userSession.token
+                    _rememberMe.value = userSession.rememberMe
+                    _user.value = UserData(
+                        id = userSession.userId,
+                        nama = userSession.nama,
+                        email = userSession.email,
+                        phone = userSession.phone,
+                        address = userSession.address
+                    )
+                    _isLoading.value = false
+                    
+                    // Fetch fresh user data di background (optional)
+                    userSession.token?.let { fetchUserData(it) }
+                } else {
+                    // Tidak ada user tersimpan atau Remember Me tidak aktif
+                    // Clear database untuk memastikan
+                    withContext(Dispatchers.IO) {
+                        dbHelper.clearUser()
+                    }
+                    _token.value = null
+                    _user.value = null
+                    _isLoading.value = false
+                }
+            }
+        }
+    }
+
+    /**
+     * Simpan session token dan user data ke SQLite jika Remember Me aktif
+     */
     fun saveSessionToken(token: String, rememberMe: Boolean = true) {
         viewModelScope.launch {
-            // Selalu simpan token ke local storage agar persist saat aplikasi ditutup
-            sessionManager.saveSessionToken(token)
             _token.value = token
-            // Simpan remember me preference juga
-            sessionManager.saveRememberMe(rememberMe)
-            // Set loading ke false setelah save token (jika user data sudah ada dari login)
+            _rememberMe.value = rememberMe
+            
+            if (rememberMe && _user.value != null) {
+                // Simpan ke SQLite
+                withContext(Dispatchers.IO) {
+                    val userData = _user.value!!
+                    dbHelper.saveUser(
+                        userId = userData.id,
+                        nama = userData.nama,
+                        email = userData.email,
+                        phone = userData.phone,
+                        address = userData.address,
+                        token = token,
+                        rememberMe = true
+                    )
+                }
+            } else if (!rememberMe) {
+                // Jika Remember Me tidak aktif, hapus dari database
+                withContext(Dispatchers.IO) {
+                    dbHelper.clearUser()
+                }
+            }
+            
             if (_user.value != null) {
                 _isLoading.value = false
             }
         }
     }
 
-    // Simpan remember me preference (hanya untuk UI, tidak mempengaruhi penyimpanan token)
+    /**
+     * Simpan remember me preference
+     */
     fun saveRememberMe(remember: Boolean) {
         viewModelScope.launch {
-            sessionManager.saveRememberMe(remember)
-            // Token tetap tersimpan di local storage terlepas dari remember me
-            // Remember me hanya untuk preferensi UI
+            _rememberMe.value = remember
+            
+            if (remember && _user.value != null && _token.value != null) {
+                // Simpan ke SQLite
+                withContext(Dispatchers.IO) {
+                    val userData = _user.value!!
+                    dbHelper.saveUser(
+                        userId = userData.id,
+                        nama = userData.nama,
+                        email = userData.email,
+                        phone = userData.phone,
+                        address = userData.address,
+                        token = _token.value,
+                        rememberMe = true
+                    )
+                }
+            } else if (!remember) {
+                // Hapus dari database
+                withContext(Dispatchers.IO) {
+                    dbHelper.clearUser()
+                }
+            }
         }
     }
 
-    // Set user data langsung (dari LoginResponse)
+    /**
+     * Set user data langsung (dari LoginResponse)
+     */
     fun setUserData(userData: UserData?) {
         _user.value = userData
-        // Set loading ke false setelah user data di-set
         _isLoading.value = false
+        
+        // Jika Remember Me aktif, simpan user data ke SQLite
+        if (_rememberMe.value && userData != null && _token.value != null) {
+            viewModelScope.launch {
+                withContext(Dispatchers.IO) {
+                    dbHelper.saveUser(
+                        userId = userData.id,
+                        nama = userData.nama,
+                        email = userData.email,
+                        phone = userData.phone,
+                        address = userData.address,
+                        token = _token.value,
+                        rememberMe = true
+                    )
+                }
+            }
+        }
     }
 
-    // 🔥 Fungsi baru — panggil setelah login berhasil
+    /**
+     * Fetch user data setelah login berhasil
+     */
     fun fetchUserDataAfterLogin(token: String) {
         _isLoading.value = true
         ApiClient.instance.getSession(token).enqueue(object : Callback<SessionResponse> {
@@ -103,9 +194,26 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             ) {
                 _isLoading.value = false
                 if (response.isSuccessful && response.body()?.status == "success") {
-                    _user.value = response.body()?.user
+                    val userData = response.body()?.user
+                    _user.value = userData
+                    
+                    // Simpan ke SQLite jika Remember Me aktif
+                    if (_rememberMe.value && userData != null) {
+                        viewModelScope.launch {
+                            withContext(Dispatchers.IO) {
+                                dbHelper.saveUser(
+                                    userId = userData.id,
+                                    nama = userData.nama,
+                                    email = userData.email,
+                                    phone = userData.phone,
+                                    address = userData.address,
+                                    token = token,
+                                    rememberMe = true
+                                )
+                            }
+                        }
+                    }
                 } else {
-                    // Jika response tidak berhasil, set user ke null
                     _user.value = null
                 }
             }
@@ -113,58 +221,76 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             override fun onFailure(call: Call<SessionResponse>, t: Throwable) {
                 _isLoading.value = false
                 _user.value = null
-                // Error handling - bisa ditambahkan logging atau error state
             }
         })
     }
 
-    // Ambil user dari session token (saat startup)
-    // Dipanggil di background setelah token di-set, tidak blocking UI
+    /**
+     * Ambil user dari session token (saat startup) - background refresh
+     */
     private fun fetchUserData(token: String) {
-        // Jangan set loading ke true karena ini background task
-        // UI sudah di-render dengan token yang ada
         ApiClient.instance.getSession(token).enqueue(object : Callback<SessionResponse> {
             override fun onResponse(
                 call: Call<SessionResponse>,
                 response: Response<SessionResponse>
             ) {
                 if (response.isSuccessful && response.body()?.status == "success") {
-                    _user.value = response.body()?.user
+                    val userData = response.body()?.user
+                    _user.value = userData
+                    
+                    // Update data di SQLite
+                    if (_rememberMe.value && userData != null) {
+                        viewModelScope.launch {
+                            withContext(Dispatchers.IO) {
+                                dbHelper.saveUser(
+                                    userId = userData.id,
+                                    nama = userData.nama,
+                                    email = userData.email,
+                                    phone = userData.phone,
+                                    address = userData.address,
+                                    token = token,
+                                    rememberMe = true
+                                )
+                            }
+                        }
+                    }
                 } else {
-                    // Jika response tidak successful, cek apakah benar-benar token invalid
                     val errorCode = response.code()
                     if (errorCode == 401 || errorCode == 403) {
-                        // Hanya clear jika benar-benar unauthorized (token invalid/expired)
+                        // Token invalid/expired - clear session
                         viewModelScope.launch {
-                            sessionManager.clearAll()
+                            withContext(Dispatchers.IO) {
+                                dbHelper.clearUser()
+                            }
                             _token.value = null
                             _user.value = null
                         }
-                    } else {
-                        // Untuk error lain (500, network timeout, dll), biarkan token tetap ada
-                        // User bisa tetap menggunakan aplikasi dengan token yang ada
-                        // User data akan di-fetch lagi nanti
-                        _user.value = null
                     }
                 }
             }
 
             override fun onFailure(call: Call<SessionResponse>, t: Throwable) {
-                // Jika network error, jangan clear token - mungkin hanya masalah koneksi
-                // Biarkan token tetap ada agar user bisa tetap menggunakan aplikasi
-                // User data akan di-fetch lagi saat ada koneksi
-                _user.value = null
+                // Network error - keep existing user data from SQLite
             }
         })
     }
 
-    // Logout - hapus semua session dari local storage
+    /**
+     * Logout - hapus semua data user dari SQLite
+     */
     fun logout() {
         viewModelScope.launch {
-            // Selalu hapus semua session saat logout (token dan remember me)
-            sessionManager.clearAll()
+            // Hapus data dari SQLite
+            withContext(Dispatchers.IO) {
+                dbHelper.clearUser()
+            }
+            
+            // Reset state
             _token.value = null
             _user.value = null
+            _rememberMe.value = false
         }
     }
 }
+
+

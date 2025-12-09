@@ -70,12 +70,24 @@ fun HomeScreen(
     val currentUser by sessionViewModel.user.collectAsState()
     val userOrders by pemesananViewModel.pemesanan.collectAsState()
     val progressList by progressViewModel.progress.collectAsState()
+    val totalSelesai by pemesananViewModel.totalSelesai.collectAsState()
+    
+    // StatCard 1: Total Pending (pending + waiting for order) - dari PemesananController
+    val totalPending by pemesananViewModel.totalPending.collectAsState()
+    
+    // StatCard 2: Total Proses - dari PemesananController (t_pemesanan dengan status proses)
+    val totalProses by pemesananViewModel.totalProses.collectAsState()
 
     // Load pemesanan for user
     LaunchedEffect(currentUser?.id) {
         currentUser?.id?.let { id ->
             pemesananViewModel.loadPemesananForUser(id, limit = 20)
             progressViewModel.loadProgressForUser(id, limit = 20)
+            pemesananViewModel.loadTotalSelesai(id)
+            
+            // Load data untuk StatCard
+            pemesananViewModel.loadTotalPending(id)  // pending + waiting for order dari PemesananController
+            pemesananViewModel.loadTotalProses(id)  // proses dari PemesananController (t_pemesanan)
         }
     }
 
@@ -84,7 +96,7 @@ fun HomeScreen(
         val latestPendingOrder = userOrders.firstOrNull { order ->
             order.status_pengerjaan?.lowercase() == "pending" || 
             order.status_pengerjaan?.lowercase() == "proses" ||
-            order.status_pengerjaan?.lowercase() == "waiting for payment"
+            order.status_pengerjaan?.lowercase() == "Menunggu Pembayaran"
         }
 
         if (latestPendingOrder != null) {
@@ -96,8 +108,8 @@ fun HomeScreen(
     
     // Cek apakah ada order dengan status "waiting for payment"
     val waitingPaymentOrder = userOrders.firstOrNull { order ->
-        order.status_pengerjaan?.lowercase() == "waiting for payment" ||
-        order.status_pengerjaan?.lowercase() == "waiting to payment"
+        order.status_pengerjaan?.lowercase() == "Menunggu Pembayaran" ||
+        order.status_pengerjaan?.lowercase() == "Menunggu Pembayaran"
     }
 
     val seatDesigns = products.map { p ->
@@ -111,11 +123,26 @@ fun HomeScreen(
         )
     }
 
-    // Filter progress dengan status pending, proses, atau waiting for payment
-    val activeProgressOrders = progressList.filter { progress ->
-        val status = progress.t_pemesanan?.status_pengerjaan?.lowercase()
-        status == "pending" || status == "proses" || status == "waiting for payment" || status == "waiting to payment"
+    // Filter orders dengan status pending atau waiting - dari PemesananController
+    val pendingWaitingOrders = userOrders.filter { order ->
+        val status = order.status_pengerjaan?.lowercase()
+        status == "pending" || status == "waiting" || status == "waiting for order" || status == "waiting for payment" || status == "waiting to payment"
     }
+
+    // Filter progress dengan status proses - dari ProgressController
+    val prosesProgressOrders = progressList.filter { progress ->
+        val status = progress.t_pemesanan?.status_pengerjaan?.lowercase()
+        status == "proses"
+    }
+
+    // Filter orders dengan status Menunggu Pembayaran - dari PemesananController
+    val menungguPembayaranOrders = userOrders.filter { order ->
+        val status = order.status_pengerjaan?.lowercase()
+        status == "menunggu pembayaran"
+    }
+
+    // Cek apakah ada active order (dari salah satu atau kedua sumber)
+    val hasActiveOrders = pendingWaitingOrders.isNotEmpty() || prosesProgressOrders.isNotEmpty() || menungguPembayaranOrders.isNotEmpty()
 
     Column(
         modifier = Modifier
@@ -177,8 +204,12 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    StatCard("5", "Completed", modifier = Modifier.weight(1f))
-                    StatCard("1", "Active", modifier = Modifier.weight(1f))
+                    // StatCard 1: Pending (dari PemesananController - status: pending, waiting for order)
+                    StatCard(totalPending.toString(), "Pending", modifier = Modifier.weight(1f))
+                    // StatCard 2: Proses (dari PemesananController - t_pemesanan dengan status: proses)
+                    StatCard(totalProses.toString(), "Proses", modifier = Modifier.weight(1f))
+                    // StatCard 3: Selesai (dari PemesananController - status: selesai)
+                    StatCard(totalSelesai.toString(), "Selesai", modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -191,8 +222,8 @@ fun HomeScreen(
         ) {
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Active Order
-            if (activeProgressOrders.isNotEmpty()) {
+            // Active Order Section
+            if (hasActiveOrders) {
                 Text(
                     text = "Active Order",
                     fontSize = 20.sp,
@@ -200,7 +231,105 @@ fun HomeScreen(
                     color = TextPrimary,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
-                activeProgressOrders.forEach { progress ->
+
+                // ========== PENDING/WAITING ORDERS (dari PemesananController) ==========
+                pendingWaitingOrders.forEach { order ->
+                    val serviceName = "Order #${order.pesanan_id}"
+                    val orderId = "ORD-${order.pesanan_id}"
+                    val status = order.status_pengerjaan ?: "Unknown"
+                    val progressPercentage = 0 // Pending belum ada progress
+                    val estimatedTime = order.estimasi_selesai ?: "TBD"
+                    
+                    CustomCardWithBorder(
+                        onClick = { 
+                            when (status.lowercase()) {
+                                "waiting for payment", "waiting to payment" -> {
+                                    onNavigate(Screen.Payment.route)
+                                }
+                                else -> {
+                                    onNavigate(Screen.OrderDetail.route)
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = orderId,
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = serviceName,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextPrimary
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = BackgroundGray
+                            ) {
+                                Text(
+                                    text = status,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    fontSize = 12.sp,
+                                    color = PrimaryBlue
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Progress",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                            Text(
+                                text = "$progressPercentage%",
+                                fontSize = 12.sp,
+                                color = PrimaryBlue
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = progressPercentage / 100f,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp)),
+                            color = PrimaryBlue,
+                            trackColor = Gray200
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.AccessTime,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = TextSecondary
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (estimatedTime != "TBD") "Est. selesai: $estimatedTime" else "Menunggu konfirmasi",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                // ========== PROSES ORDERS (dari ProgressController) ==========
+                prosesProgressOrders.forEach { progress ->
                     val pesanan = progress.t_pemesanan
                     if (pesanan != null) {
                         val serviceName = pesanan.m_product_layanan?.nama_layanan ?: "Service"
@@ -211,14 +340,7 @@ fun HomeScreen(
                         
                         CustomCardWithBorder(
                             onClick = { 
-                                when (status.lowercase()) {
-                                    "waiting for payment", "waiting to payment" -> {
-                                        onNavigate(Screen.Payment.route)
-                                    }
-                                    else -> {
-                                        onNavigate(Screen.OrderDetail.route)
-                                    }
-                                }
+                                onNavigate(Screen.OrderDetail.route)
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -303,9 +425,90 @@ fun HomeScreen(
                                 )
                             }
                         }
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
-                Spacer(modifier = Modifier.height(24.dp))
+
+                // ========== MENUNGGU PEMBAYARAN ORDERS (dari PemesananController) ==========
+                menungguPembayaranOrders.forEach { order ->
+                    val serviceName = "Order #${order.pesanan_id}"
+                    val orderId = "ORD-${order.pesanan_id}"
+                    val status = order.status_pengerjaan ?: "Menunggu Pembayaran"
+                    val totalHarga = order.total_estimasi_harga ?: 0
+                    
+                    CustomCardWithBorder(
+                        onClick = { 
+                            // Navigate to PaymentScreen
+                            onNavigate(Screen.Payment.route)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = orderId,
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = serviceName,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextPrimary
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFFFF3E0) // Orange background for payment pending
+                            ) {
+                                Text(
+                                    text = status,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFE65100) // Dark orange text
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Total Pembayaran",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                            Text(
+                                text = "Rp ${String.format("%,d", totalHarga)}",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryBlue
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Payment,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color(0xFFE65100)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Klik untuk melakukan pembayaran",
+                                fontSize = 12.sp,
+                                color = Color(0xFFE65100)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
 
 
