@@ -17,7 +17,7 @@ object ProgressRepository {
                             "pesanan_id, user_id, tanggal_pesan, tanggal_pengerjaan, estimasi_selesai, " +
                             "total_estimasi_harga, status_pengerjaan, metode_pembayaran, status_pembayaran, " +
                             "nominal_pembayaran, tanggal_pembayaran, teknisi_id, " +
-                            "m_product_layanan(product_id, nama_layanan, jenis_kategori, harga, deskripsi), " +
+                            "m_product_layanan(product_id, nama_layanan, harga, deskripsi), " +
                             "bahan_id" +
                             ")",
                     "presentase_progress",
@@ -44,7 +44,7 @@ object AllProgressRepository {
                             "pesanan_id, user_id, tanggal_pesan, tanggal_pengerjaan, estimasi_selesai, " +
                             "total_estimasi_harga, status_pengerjaan, metode_pembayaran, status_pembayaran, " +
                             "nominal_pembayaran, tanggal_pembayaran, teknisi_id, " +
-                            "m_product_layanan(product_id, nama_layanan, jenis_kategori, harga, deskripsi), " +
+                            "m_product_layanan(product_id, nama_layanan, harga, deskripsi), " +
                             "bahan_id" +
                             ")",
                     "presentase_progress",
@@ -72,7 +72,7 @@ object DetailProgressRepository {
                             "pesanan_id, user_id, tanggal_pesan, tanggal_pengerjaan, estimasi_selesai, " +
                             "total_estimasi_harga, status_pengerjaan, metode_pembayaran, status_pembayaran, " +
                             "nominal_pembayaran, tanggal_pembayaran, teknisi_id, " +
-                            "m_product_layanan(product_id, nama_layanan, jenis_kategori, harga, deskripsi), " +
+                            "m_product_layanan(product_id, nama_layanan, harga, deskripsi), " +
                             "bahan_id" +
                             ")",
                     "presentase_progress",

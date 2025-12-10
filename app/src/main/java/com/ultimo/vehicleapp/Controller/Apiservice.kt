@@ -51,10 +51,23 @@ data class SessionResponse(
     val user: UserData?
 )
 
-// --- Design DTO untuk API ---
+// --- Model untuk Update Personal Information ---
+data class UpdatePersonalInfoRequest(
+    val token: String,
+    val nama: String,
+    val email: String,
+    val phone: String,
+    val address: String?,
+    val password: String?  // Simple password field
+)
+
+data class UpdatePersonalInfoResponse(
+    val status: String,
+    val message: String,
+    val user: UserData?
+)
 
 
-// --- Interface Retrofit ---
 interface ApiService {
     @POST("api/auth_api")
     fun login(@Body requestBody: LoginRequest): Call<LoginResponse>
@@ -65,6 +78,14 @@ interface ApiService {
     // 🔹 Ganti GET agar pakai @Query, bukan @Body
     @GET("api/auth_api")
     fun getSession(@Query("token") token: String): Call<SessionResponse>
+
+    // 🔹 API untuk update personal information
+    @POST("api/update_personal_info")
+    fun updatePersonalInfo(
+        @Query("token") token: String,
+        @Body requestBody: UpdatePersonalInfoRequest
+    ): Call<UpdatePersonalInfoResponse>
+
 
 }
 

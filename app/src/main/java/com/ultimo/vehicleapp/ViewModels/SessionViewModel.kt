@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ultimo.vehicleapp.Config.ApiClient
 import com.ultimo.vehicleapp.Controller.SessionResponse
+import com.ultimo.vehicleapp.Controller.UpdatePersonalInfoRequest
+import com.ultimo.vehicleapp.Controller.UpdatePersonalInfoResponse
 import com.ultimo.vehicleapp.Controller.UserData
 import com.ultimo.vehicleapp.data.UserDatabaseHelper
 import kotlinx.coroutines.Dispatchers
@@ -290,6 +292,112 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             _user.value = null
             _rememberMe.value = false
         }
+    }
+
+    // --- State untuk Update Personal Information ---
+    private val _updateStatus = MutableStateFlow<String?>(null)
+    val updateStatus: StateFlow<String?> get() = _updateStatus
+
+    private val _updateMessage = MutableStateFlow<String?>(null)
+    val updateMessage: StateFlow<String?> get() = _updateMessage
+
+    private val _isUpdating = MutableStateFlow(false)
+    val isUpdating: StateFlow<Boolean> get() = _isUpdating
+
+    /**
+     * Update personal information ke server
+     */
+    fun updatePersonalInfo(
+        nama: String,
+        email: String,
+        phone: String,
+        address: String?,
+        currentPassword: String? = null,  // Keep for compatibility but ignored
+        newPassword: String? = null,      // This becomes the password
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        val currentToken = _token.value
+        if (currentToken.isNullOrEmpty()) {
+            _updateStatus.value = "error"
+            _updateMessage.value = "Token tidak ditemukan. Silakan login ulang."
+            onError("Token tidak ditemukan")
+            return
+        }
+
+        _isUpdating.value = true
+        _updateStatus.value = null
+        _updateMessage.value = null
+
+        val request = UpdatePersonalInfoRequest(
+            token = currentToken,
+            nama = nama,
+            email = email,
+            phone = phone,
+            address = address,
+            password = newPassword  // Use newPassword as password
+        )
+
+        ApiClient.instance.updatePersonalInfo(currentToken, request).enqueue(object : Callback<UpdatePersonalInfoResponse> {
+            override fun onResponse(
+                call: Call<UpdatePersonalInfoResponse>,
+                response: Response<UpdatePersonalInfoResponse>
+            ) {
+                _isUpdating.value = false
+                if (response.isSuccessful && response.body()?.status == "success") {
+                    _updateStatus.value = "success"
+                    _updateMessage.value = response.body()?.message ?: "Data berhasil diperbarui"
+                    
+                    // Update user data di state
+                    val updatedUser = response.body()?.user ?: UserData(
+                        id = _user.value?.id,
+                        nama = nama,
+                        email = email,
+                        phone = phone,
+                        address = address
+                    )
+                    _user.value = updatedUser
+                    
+                    // Simpan ke SQLite jika Remember Me aktif
+                    if (_rememberMe.value) {
+                        viewModelScope.launch {
+                            withContext(Dispatchers.IO) {
+                                dbHelper.saveUser(
+                                    userId = updatedUser.id,
+                                    nama = updatedUser.nama,
+                                    email = updatedUser.email,
+                                    phone = updatedUser.phone,
+                                    address = updatedUser.address,
+                                    token = currentToken,
+                                    rememberMe = true
+                                )
+                            }
+                        }
+                    }
+                    
+                    onSuccess()
+                } else {
+                    _updateStatus.value = "error"
+                    _updateMessage.value = response.body()?.message ?: "Gagal memperbarui data"
+                    onError(_updateMessage.value ?: "Unknown error")
+                }
+            }
+
+            override fun onFailure(call: Call<UpdatePersonalInfoResponse>, t: Throwable) {
+                _isUpdating.value = false
+                _updateStatus.value = "error"
+                _updateMessage.value = "Koneksi gagal: ${t.message}"
+                onError(_updateMessage.value ?: "Network error")
+            }
+        })
+    }
+
+    /**
+     * Reset update status
+     */
+    fun resetUpdateStatus() {
+        _updateStatus.value = null
+        _updateMessage.value = null
     }
 }
 

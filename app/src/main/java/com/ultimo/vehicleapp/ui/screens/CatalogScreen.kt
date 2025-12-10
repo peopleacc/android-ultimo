@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.ultimo.vehicleapp.R
 import com.ultimo.vehicleapp.ViewModels.PemesananViewModel
 import com.ultimo.vehicleapp.ViewModels.ProductViewModel
@@ -205,11 +206,13 @@ fun CatalogItemCard(
                     .clip(RoundedCornerShape(12.dp))
                     .background(Gray200)
             ) {
-                Image(
-                    painter = painterResource(id = R.drawable.black),
+                AsyncImage(
+                    model = if (product.gambar_url.isEmpty()) R.drawable.black else product.gambar_url,
                     contentDescription = product.nama_layanan,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    error = painterResource(R.drawable.black),
+                    placeholder = painterResource(R.drawable.black)
                 )
             }
 
@@ -222,22 +225,6 @@ fun CatalogItemCard(
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Category
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = PrimaryBlue.copy(alpha = 0.1f)
-            ) {
-                Text(
-                    text = product.jenis_kategori,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = PrimaryBlue
-                )
-            }
 
             Spacer(modifier = Modifier.height(12.dp))
 

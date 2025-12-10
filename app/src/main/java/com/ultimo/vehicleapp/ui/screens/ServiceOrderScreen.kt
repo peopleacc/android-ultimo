@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.ultimo.vehicleapp.R
 import com.ultimo.vehicleapp.navigation.Screen
 import com.ultimo.vehicleapp.ui.components.CustomButton
@@ -56,7 +57,7 @@ data class Design(
     val id: Int,
     val name: String,
     val price: Int,
-    val imageResId: Int,
+    val imageUrl: String,
     val description: String
 )
 
@@ -110,7 +111,7 @@ fun ServiceOrderScreen(
             id = p.product_id,
             name = p.nama_layanan,
             price = p.harga ?: 0,
-            imageResId = R.drawable.black,
+            imageUrl = p.gambar_url,
             description = "Premium design option"
         )
     }
@@ -481,11 +482,13 @@ fun Step1Content(
                             .clickable { onDesignSelected(design.id) }
                     ) {
                         // Background Image
-                        Image(
-                            painter = painterResource(id = design.imageResId),
+                        AsyncImage(
+                            model = if (design.imageUrl.isEmpty()) R.drawable.black else design.imageUrl,
                             contentDescription = design.name,
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Crop,
+                            error = painterResource(R.drawable.black),
+                            placeholder = painterResource(R.drawable.black)
                         )
                         
                         // Overlay Gradient untuk readability
@@ -614,11 +617,13 @@ fun Step2Content(
                 .padding(bottom = 16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = painterResource(id = design.imageResId),
+                AsyncImage(
+                    model = if (design.imageUrl.isEmpty()) R.drawable.black else design.imageUrl,
                     contentDescription = design.name,
                     modifier = Modifier.size(32.dp),
-                    contentScale = ContentScale.Fit
+                    contentScale = ContentScale.Fit,
+                    error = painterResource(R.drawable.black),
+                    placeholder = painterResource(R.drawable.black)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {

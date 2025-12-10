@@ -45,7 +45,7 @@ data class SeatDesign(
     val id: Int,
     val name: String,
     val price: Int,
-    val imageResId: Int,
+    val imageUrl: String,
     val badge: String,
     val badgeColor: Color
 )
@@ -117,7 +117,7 @@ fun HomeScreen(
             id = p.product_id,
             name = p.nama_layanan,
             price = p.harga?.toInt() ?: 0,
-            imageResId = R.drawable.black,
+            imageUrl = p.gambar_url,
             badge = "New",
             badgeColor = PrimaryBlue
         )
@@ -653,11 +653,13 @@ fun SeatDesignCard(
                     .background(Gray200),
                 contentAlignment = Alignment.Center
             ) {
-                Image(
-                    painter = painterResource(id = design.imageResId),
+                AsyncImage(
+                    model = if (design.imageUrl.isEmpty()) R.drawable.black else design.imageUrl,
                     contentDescription = design.name,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    error = painterResource(R.drawable.black),
+                    placeholder = painterResource(R.drawable.black)
                 )
                 Box(
                     modifier = Modifier

@@ -13,7 +13,7 @@ object ProductRepository {
                 Columns.list(
                 "product_id",
                 "nama_layanan",
-                "jenis_kategori",
+                "gambar_url",
                 "harga",
                 "deskripsi"
             ))
