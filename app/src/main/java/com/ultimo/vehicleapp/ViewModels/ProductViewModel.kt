@@ -1,5 +1,6 @@
 package com.ultimo.vehicleapp.ViewModels
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ultimo.vehicleapp.Controller.ProductRepository
@@ -19,7 +20,12 @@ class ProductViewModel : ViewModel() {
 
     private fun loadProducts() {
         viewModelScope.launch {
-            _products.value = ProductRepository.getAllProducts()
+            try {
+                _products.value = ProductRepository.getAllProducts()
+            } catch (e: Exception) {
+                Log.e("ProductViewModel", "Error loading products: ${e.message}", e)
+                _products.value = emptyList()
+            }
         }
     }
 }

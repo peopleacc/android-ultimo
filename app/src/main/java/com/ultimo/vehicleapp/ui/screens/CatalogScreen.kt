@@ -3,8 +3,9 @@ package com.ultimo.vehicleapp.ui.screens
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -46,6 +47,7 @@ fun CatalogScreen(
     val currentUser by sessionViewModel.user.collectAsState()
     val userOrders by pemesananViewModel.pemesanan.collectAsState()
     var showAlreadyOrderedSnackbar by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
 
     // Load pemesanan for user
     LaunchedEffect(currentUser?.id) {
@@ -81,24 +83,50 @@ fun CatalogScreen(
                 )
                 .padding(24.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { onNavigate(Screen.Home.route) }) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.White
-                    )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { onNavigate(Screen.Home.route) }) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color.White
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Katalog Jok Design",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                    
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Katalog Jok Design",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(text = "Search Jok Design...", color = TextSecondary) },
+                    leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = PrimaryBlue) },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White,
+                        focusedBorderColor = PrimaryBlue,
+                        unfocusedBorderColor = Color.Transparent,
+                        cursorColor = PrimaryBlue,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    singleLine = true
                 )
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
 
@@ -107,7 +135,7 @@ fun CatalogScreen(
             // Show single product detail
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
                     .verticalScroll(rememberScrollState())
                     .padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -125,22 +153,24 @@ fun CatalogScreen(
                 )
             }
         } else {
-            // Show all products
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+            val filtered = products.filter { p ->
+                p.nama_layanan?.contains(searchQuery, ignoreCase = true) == true ||
+                p.deskripsi?.contains(searchQuery, ignoreCase = true) == true
+            }
+            val displayProducts = filtered
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(products) { product ->
-                    CatalogItemCard(
+                items(displayProducts) { product ->
+                    CatalogGridItemCard(
                         product = product,
                         onOrderClick = {
-                            if (hasPendingOrder) {
-                                showAlreadyOrderedSnackbar = true
-                            } else {
-                                // Navigate to ServiceOrderScreen with step 2 and selected product
-                                onNavigate("${Screen.Order.route}/2/${product.product_id}")
-                            }
+                            // Navigate to CatalogDesignScreen
+                            onNavigate("${Screen.CatalogDesign.route}/${product.product_id}")
                         }
                     )
                 }
@@ -178,7 +208,7 @@ fun CatalogScreen(
                         tint = Color.White
                     )
                     Text(
-                        text = "Anda sudah melakukan pemesanan",
+                        text = "You have placed an order",
                         color = Color.White
                     )
                 }
@@ -204,16 +234,18 @@ fun CatalogItemCard(
                     .fillMaxWidth()
                     .height(400.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Gray200)
+                    .background(if (product.gambar_url.isNullOrEmpty()) Color.White else Gray200)
             ) {
-                AsyncImage(
-                    model = if (product.gambar_url.isEmpty()) R.drawable.black else product.gambar_url,
-                    contentDescription = product.nama_layanan,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    error = painterResource(R.drawable.black),
-                    placeholder = painterResource(R.drawable.black)
-                )
+                if (!product.gambar_url.isNullOrEmpty()) {
+                    AsyncImage(
+                        model = product.gambar_url,
+                        contentDescription = product.nama_layanan,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        error = painterResource(R.drawable.black),
+                        placeholder = painterResource(R.drawable.black)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -265,7 +297,7 @@ fun CatalogItemCard(
 
             // Order Button
             CustomButton(
-                text = "Lakukan Pemesanan",
+                text = "Place an order",
                 onClick = onOrderClick,
                 modifier = Modifier.fillMaxWidth(),
                 icon = Icons.Default.ShoppingCart
@@ -274,3 +306,151 @@ fun CatalogItemCard(
     }
 }
 
+@Composable
+fun CatalogGridItemCard(
+    product: com.ultimo.vehicleapp.model.ProductLayanan,
+    onOrderClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp)),
+        shadowElevation = 4.dp,
+        color = Color.White,
+        onClick = onOrderClick
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // Product Image with Gradient Overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+            ) {
+                if (!product.gambar_url.isNullOrEmpty()) {
+                    AsyncImage(
+                        model = product.gambar_url,
+                        contentDescription = product.nama_layanan,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        error = painterResource(R.drawable.black),
+                        placeholder = painterResource(R.drawable.black)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(PrimaryBlue.copy(alpha = 0.3f), PrimaryBlueLight.copy(alpha = 0.5f))
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AirlineSeatReclineNormal,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = Color.White
+                        )
+                    }
+                }
+                
+                // Bottom gradient overlay
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(60.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.4f))
+                            )
+                        )
+                )
+                
+                // Premium badge
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = PrimaryBlue.copy(alpha = 0.9f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = Color.Yellow
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Premium",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+
+            // Product Info
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp)
+            ) {
+                // Product Name
+                Text(
+                    text = product.nama_layanan,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    maxLines = 2,
+                    lineHeight = 18.sp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Price with icon
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp), 
+                        color = PrimaryBlue.copy(alpha = 0.1f)
+                    ) {
+                        Text(
+                            text = "Rp ${(product.harga ?: 0).toString().replace(Regex("(\\d)(?=(\\d{3})+$)"), "$1.")}",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = PrimaryBlue,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                    
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = PrimaryBlue
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = "View",
+                            modifier = Modifier
+                                .size(28.dp)
+                                .padding(6.dp),
+                            tint = Color.White
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

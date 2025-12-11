@@ -25,6 +25,7 @@ import com.ultimo.vehicleapp.ui.components.CustomCard
 import com.ultimo.vehicleapp.ui.components.CustomCardWithBorder
 import com.ultimo.vehicleapp.ui.components.CustomTextField
 import com.ultimo.vehicleapp.ui.theme.*
+import kotlinx.coroutines.launch
 
 data class ContactMethod(
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -41,10 +42,17 @@ data class FAQItem(
 
 @Composable
 fun HelpSupportScreen(
-    onNavigate: (String) -> Unit
+    onNavigate: (String) -> Unit,
+    sessionViewModel: com.ultimo.vehicleapp.ViewModels.SessionViewModel,
+    chatViewModel: com.ultimo.vehicleapp.ViewModels.ChatViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     var subject by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
+    val currentUser by sessionViewModel.user.collectAsState()
+    var sending by remember { mutableStateOf(false) }
+    var sendSuccess by remember { mutableStateOf<Boolean?>(null) }
+    var sendError by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     val contactMethods = listOf(
         ContactMethod(Icons.Default.Phone, "Phone Support", "+62 21 1234 5678", "Mon - Sat, 9:00 AM - 6:00 PM", "tel:+622112345678"),
@@ -63,7 +71,6 @@ fun HelpSupportScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundPink)
-            .padding(bottom = 80.dp)
     ) {
         // Header
         Box(
@@ -211,14 +218,26 @@ fun HelpSupportScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     CustomButton(
-                        text = "Send Message",
+                        text = if (sending) "Sending..." else "Send Message",
                         onClick = {
-                            if (subject.isNotEmpty() && message.isNotEmpty()) {
-                                subject = ""
-                                message = ""
+                            val userId = currentUser?.id
+                            if (!sending && userId != null && subject.isNotEmpty() && message.isNotEmpty()) {
+                                sending = true
+                                coroutineScope.launch {
+                                    val result = chatViewModel.sendMessage(userId, subject, message)
+                                    sendSuccess = result.ok
+                                    sendError = result.error
+                                    sending = false
+                                    if (result.ok) {
+                                        subject = ""
+                                        message = ""
+                                    }
+                                    
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
+                        enabled = !sending && currentUser?.id != null && subject.isNotEmpty() && message.isNotEmpty(),
                         icon = Icons.Default.Send
                     )
                 }
@@ -246,6 +265,22 @@ fun HelpSupportScreen(
                         color = TextSecondary,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
+                }
+            }
+
+            if (sendSuccess != null) {
+                val success = sendSuccess == true
+                androidx.compose.material3.Snackbar(
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = if (success) SuccessGreen else Color.Red,
+                    contentColor = Color.White
+                ) {
+                    androidx.compose.material3.Text(text = if (success) "Pesan terkirim" else ("Gagal mengirim pesan" + (sendError?.let { ": $it" } ?: "")))
+                }
+                LaunchedEffect(sendSuccess) {
+                    kotlinx.coroutines.delay(2000)
+                    sendSuccess = null
+                    sendError = null
                 }
             }
         }

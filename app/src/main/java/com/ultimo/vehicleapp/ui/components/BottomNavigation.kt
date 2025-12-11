@@ -29,6 +29,7 @@ fun CustomBottomNavigation(
     val navItems = listOf(
         BottomNavItem("home", Icons.Default.Home, "Home"),
         BottomNavItem("orders", Icons.Default.ShoppingBag, "Orders"),
+        BottomNavItem("catalog", Icons.Default.MenuBook, "Catalog"),
         BottomNavItem("tracking", Icons.Default.AccessTime, "Tracking"),
         BottomNavItem("profile", Icons.Default.Person, "Profile")
     )

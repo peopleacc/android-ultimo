@@ -14,11 +14,13 @@ data class pemesanan(
     val status_pengerjaan: String? = null,
     val metode_pembayaran: String? = null,
     val status_pembayaran: String? = null,
-    val nominal_pembayaran: String? = null,
+    val nominal_pembayaran: Double? = null,
     val tanggal_pembayaran: String? = null,
     val teknisi_id: Int? = null,
     val product_id: Int,
     val bahan_id: Int,
+    val bukti_pembayaran: String? = null,
+    val upload_gambar: String? = null,
 )
 
 @Serializable

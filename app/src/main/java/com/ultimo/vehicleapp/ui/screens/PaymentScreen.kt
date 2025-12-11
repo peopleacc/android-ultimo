@@ -1,5 +1,8 @@
 package com.ultimo.vehicleapp.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,23 +20,47 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.ultimo.vehicleapp.Controller.BuktiPembayaranRepository
 import com.ultimo.vehicleapp.navigation.Screen
 import com.ultimo.vehicleapp.ui.components.CustomButton
 import com.ultimo.vehicleapp.ui.components.CustomCard
 import com.ultimo.vehicleapp.ui.components.CustomCardWithBorder
 import com.ultimo.vehicleapp.ui.theme.*
-import kotlinx.coroutines.delay
+import com.ultimo.vehicleapp.ViewModels.PemesananViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun PaymentScreen(
-    onNavigate: (String) -> Unit
+    onNavigate: (String) -> Unit,
+    pesananId: Int? = null,
+    pemesananViewModel: PemesananViewModel = viewModel()
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    
     var paymentMethod by remember { mutableStateOf("qris") }
     var orderConfirmed by remember { mutableStateOf(false) }
+    
+    // State untuk image picker
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    val uploadState by pemesananViewModel.uploadState.collectAsState()
+    
+    // Image picker launcher
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        selectedImageUri = uri
+    }
 
     val orderDetails = mapOf(
         "id" to "ORD-001",
@@ -57,7 +84,6 @@ fun PaymentScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundPink)
-            .padding(bottom = 80.dp)
     ) {
         // Header
         Box(
@@ -74,7 +100,7 @@ fun PaymentScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { onNavigate(Screen.Order.route) }) {
+                IconButton(onClick = { onNavigate(Screen.Home.route) }) {
                     Icon(
                         imageVector = Icons.Default.ArrowBack,
                         contentDescription = "Back",
@@ -181,6 +207,42 @@ fun PaymentScreen(
             
             // Submit Button
 
+            // Upload Bukti Pembayaran Section (hanya untuk QRIS)
+            if (pesananId != null && paymentMethod == "qris") {
+                PaymentProofUploadSection(
+                    selectedImageUri = selectedImageUri,
+                    uploadState = uploadState,
+                    onPickImage = { imagePickerLauncher.launch("image/*") },
+                    onUpload = {
+                        selectedImageUri?.let { uri ->
+                            coroutineScope.launch {
+                                try {
+                                    val inputStream = context.contentResolver.openInputStream(uri)
+                                    val bytes = inputStream?.readBytes()
+                                    inputStream?.close()
+                                    
+                                    if (bytes != null) {
+                                        val extension = context.contentResolver.getType(uri)
+                                            ?.substringAfter("/") ?: "jpg"
+                                        pemesananViewModel.uploadBuktiPembayaran(
+                                            pesananId = pesananId,
+                                            imageBytes = bytes,
+                                            fileExtension = extension
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    println("Error reading image: ${e.message}")
+                                }
+                            }
+                        }
+                    },
+                    onResetState = {
+                        pemesananViewModel.resetUploadState()
+                        selectedImageUri = null
+                    }
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+            }
         }
 
         // Bottom Action Bar
@@ -314,6 +376,205 @@ fun PaymentMethodCard(
                 )
             }
         }
+    }
+}
+
+@Composable
+fun PaymentProofUploadSection(
+    selectedImageUri: Uri?,
+    uploadState: PemesananViewModel.UploadState,
+    onPickImage: () -> Unit,
+    onUpload: () -> Unit,
+    onResetState: () -> Unit
+) {
+    CustomCard(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = "Upload Bukti Pembayaran",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = PrimaryBlue,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        // Image Preview or Placeholder
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Gray200,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp)
+                .clickable { onPickImage() }
+        ) {
+            if (selectedImageUri != null) {
+                AsyncImage(
+                    model = selectedImageUri,
+                    contentDescription = "Bukti Pembayaran",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(contentAlignment = Alignment.Center) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddPhotoAlternate,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = Gray400
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Tap untuk pilih gambar",
+                            fontSize = 14.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Upload Status Messages
+        when (uploadState) {
+            is PemesananViewModel.UploadState.Loading -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = PrimaryBlue
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Sedang mengupload...",
+                        fontSize = 14.sp,
+                        color = TextSecondary
+                    )
+                }
+            }
+            is PemesananViewModel.UploadState.Success -> {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = SuccessGreen.copy(alpha = 0.1f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = SuccessGreen,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Upload Berhasil!",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = SuccessGreen
+                            )
+                            Text(
+                                text = "Bukti pembayaran telah dikirim",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                TextButton(
+                    onClick = onResetState,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Upload Lagi")
+                }
+            }
+            is PemesananViewModel.UploadState.Error -> {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = ErrorRed.copy(alpha = 0.1f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Error,
+                            contentDescription = null,
+                            tint = ErrorRed,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = uploadState.message,
+                            fontSize = 14.sp,
+                            color = ErrorRed
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                TextButton(
+                    onClick = onResetState,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Coba Lagi")
+                }
+            }
+            else -> {
+                // Confirm Upload Button
+                Button(
+                    onClick = onUpload,
+                    enabled = selectedImageUri != null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SuccessGreen,
+                        contentColor = Color.White,
+                        disabledContainerColor = Gray300,
+                        disabledContentColor = Gray400
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudUpload,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Konfirmasi Upload",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "* Upload bukti pembayaran tidak mengubah status pembayaran",
+            fontSize = 12.sp,
+            color = TextSecondary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

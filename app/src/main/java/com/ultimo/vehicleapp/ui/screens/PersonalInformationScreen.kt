@@ -91,7 +91,6 @@ fun PersonalInformationScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(BackgroundPink)
-                .padding(bottom = 80.dp)
         ) {
             // Header
             Box(

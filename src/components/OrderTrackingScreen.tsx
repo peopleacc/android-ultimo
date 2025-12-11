@@ -7,10 +7,9 @@ import { Button } from "./ui/button";
 
 interface OrderTrackingScreenProps {
   onNavigate: (screen: string) => void;
-}
 
 export function OrderTrackingScreen({ onNavigate }: OrderTrackingScreenProps) {
-  const orders = [
+export function OrderTrackingScreen({ onNavigate }: OrderTrackingScreenProps) {
     {
       id: "ORD-001",
       service: "Premium Leather Installation",
@@ -173,6 +172,7 @@ export function OrderTrackingScreen({ onNavigate }: OrderTrackingScreenProps) {
   ];
 
   const [selectedOrderId, setSelectedOrderId] = useState(orders[0].id);
+  const [selectedOrderId, setSelectedOrderId] = useState(orders[0].id);
   const [showOrderSelector, setShowOrderSelector] = useState(false);
 
   const selectedOrder = orders.find(o => o.id === selectedOrderId) || orders[0];
@@ -189,6 +189,50 @@ export function OrderTrackingScreen({ onNavigate }: OrderTrackingScreenProps) {
         </div>
 
         {/* Order Selector - Multiple Orders */}
+        {orders.length > 1 && (
+          <div className="mb-4">
+            <Button
+              onClick={() => setShowOrderSelector(!showOrderSelector)}
+              className="w-full bg-white/20 hover:bg-white/30 text-white border-0 h-12 justify-between"
+            >
+              <span>Pilih Pesanan ({orders.length} pesanan aktif)</span>
+              <ChevronDown className={`w-5 h-5 transition-transform ${showOrderSelector ? 'rotate-180' : ''}`} />
+            </Button>
+            
+            {showOrderSelector && (
+              <div className="mt-2 space-y-2 max-h-60 overflow-y-auto">
+                {orders.map((order) => (
+                  <Card
+                    key={order.id}
+                    className={`p-3 cursor-pointer transition-all ${
+                      selectedOrderId === order.id
+                        ? 'bg-white border-2 border-[#2D336B]'
+                        : 'bg-white/90 hover:bg-white'
+                    }`}
+                    onClick={() => {
+                      setSelectedOrderId(order.id);
+                      setShowOrderSelector(false);
+                    }}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">{order.id}</p>
+                        <p className="text-gray-900">{order.service}</p>
+                      </div>
+                      <Badge className={`
+                        ${order.progress >= 80 ? 'bg-green-100 text-green-700' : 
+                          order.progress >= 50 ? 'bg-blue-100 text-blue-700' : 
+                          'bg-orange-100 text-orange-700'} border-0
+                      `}>
+                        {order.progress}%
+                      </Badge>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {orders.length > 1 && (
           <div className="mb-4">
             <Button

@@ -86,6 +86,23 @@ interface ApiService {
         @Body requestBody: UpdatePersonalInfoRequest
     ): Call<UpdatePersonalInfoResponse>
 
-
+    // 🔹 API untuk Forgot Password (single endpoint with action)
+    @POST("api/forgot_password")
+    fun forgotPassword(@Body requestBody: ForgotPasswordRequest): Call<ForgotPasswordResponse>
 }
+
+// --- Forgot Password ---
+data class ForgotPasswordRequest(
+    val action: String,          // "send_otp", "verify_otp", "reset_password"
+    val email: String,
+    val otp: String? = null,
+    val token: String? = null,
+    val new_password: String? = null
+)
+
+data class ForgotPasswordResponse(
+    val status: String,
+    val message: String,
+    val token: String? = null    // Token untuk reset password (dari verify_otp)
+)
 

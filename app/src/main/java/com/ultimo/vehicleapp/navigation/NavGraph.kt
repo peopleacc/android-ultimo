@@ -57,6 +57,41 @@ fun NavGraph(
             )
         }
 
+        // Route with step, productId, and materialId (from CatalogDesignScreen)
+        composable(
+            route = "${Screen.Order.route}/{step}/{productId}/{materialId}",
+            arguments = listOf(
+                navArgument("step") {
+                    type = NavType.IntType
+                    defaultValue = 1
+                },
+                navArgument("productId") {
+                    type = NavType.IntType
+                    defaultValue = 0
+                },
+                navArgument("materialId") {
+                    type = NavType.IntType
+                    defaultValue = 0
+                }
+            )
+        ) { backStackEntry ->
+            val step = backStackEntry.arguments?.getInt("step") ?: 1
+            val productIdArg = backStackEntry.arguments?.getInt("productId") ?: 0
+            val materialIdArg = backStackEntry.arguments?.getInt("materialId") ?: 0
+            val productId = if (productIdArg == 0) null else productIdArg
+            val materialId = if (materialIdArg == 0) null else materialIdArg
+            ServiceOrderScreen(
+                sessionViewModel = sessionViewModel,
+                onNavigate = { route ->
+                    navController.navigate(route)
+                },
+                initialStep = step,
+                initialProductId = productId,
+                initialMaterialId = materialId
+            )
+        }
+        
+        // Route with step and productId (legacy support)
         composable(
             route = "${Screen.Order.route}/{step}/{productId}",
             arguments = listOf(
@@ -79,7 +114,8 @@ fun NavGraph(
                     navController.navigate(route)
                 },
                 initialStep = step,
-                initialProductId = productId
+                initialProductId = productId,
+                initialMaterialId = null
             )
         }
         
@@ -89,7 +125,8 @@ fun NavGraph(
                 sessionViewModel = sessionViewModel,
                 onNavigate = { route ->
                     navController.navigate(route)
-                }
+                },
+                initialMaterialId = null
             )
         }
 
@@ -111,11 +148,33 @@ fun NavGraph(
             )
         }
 
+        // Payment route with pesananId
+        composable(
+            route = "${Screen.Payment.route}/{pesananId}",
+            arguments = listOf(
+                navArgument("pesananId") {
+                    type = NavType.IntType
+                    defaultValue = 0
+                }
+            )
+        ) { backStackEntry ->
+            val pesananIdArg = backStackEntry.arguments?.getInt("pesananId") ?: 0
+            val pesananId = if (pesananIdArg == 0) null else pesananIdArg
+            PaymentScreen(
+                onNavigate = { route ->
+                    navController.navigate(route)
+                },
+                pesananId = pesananId
+            )
+        }
+        
+        // Fallback Payment route without pesananId
         composable(Screen.Payment.route) {
             PaymentScreen(
                 onNavigate = { route ->
                     navController.navigate(route)
-                }
+                },
+                pesananId = null
             )
         }
 
@@ -152,6 +211,7 @@ fun NavGraph(
 
         composable(Screen.HelpSupport.route) {
             HelpSupportScreen(
+                sessionViewModel = sessionViewModel,
                 onNavigate = { route ->
                     navController.navigate(route)
                 }
@@ -193,6 +253,89 @@ fun NavGraph(
                 sessionViewModel = sessionViewModel,
                 onNavigate = { route ->
                     navController.navigate(route)
+                }
+            )
+        }
+
+        // CatalogDesign route with productId
+        composable(
+            route = "${Screen.CatalogDesign.route}/{productId}",
+            arguments = listOf(
+                navArgument("productId") {
+                    type = NavType.IntType
+                }
+            )
+        ) { backStackEntry ->
+            val productId = backStackEntry.arguments?.getInt("productId") ?: 0
+            CatalogDesignScreen(
+                sessionViewModel = sessionViewModel,
+                productId = productId,
+                onNavigate = { route ->
+                    navController.navigate(route)
+                }
+            )
+        }
+
+        composable(Screen.Notifications.route) {
+            NotificationScreen(
+                sessionViewModel = sessionViewModel,
+                onNavigate = { route ->
+                    navController.navigate(route)
+                }
+            )
+        }
+
+        // Forgot Password Flow
+        composable(Screen.ForgotPassword.route) {
+            ForgotPasswordScreen(
+                onNavigate = { route ->
+                    navController.navigate(route)
+                },
+                onOTPSent = { email ->
+                    navController.navigate("${Screen.VerifyOTP.route}/$email")
+                }
+            )
+        }
+
+        composable(
+            route = "${Screen.VerifyOTP.route}/{email}",
+            arguments = listOf(navArgument("email") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val email = backStackEntry.arguments?.getString("email") ?: ""
+            OTPVerificationScreen(
+                email = email,
+                onNavigate = { route ->
+                    navController.navigate(route) {
+                        popUpTo(Screen.Login.route)
+                    }
+                },
+                onVerified = { verifiedEmail, token ->
+                    navController.navigate("${Screen.ResetPassword.route}/$verifiedEmail/$token")
+                }
+            )
+        }
+
+        composable(
+            route = "${Screen.ResetPassword.route}/{email}/{token}",
+            arguments = listOf(
+                navArgument("email") { type = NavType.StringType },
+                navArgument("token") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val email = backStackEntry.arguments?.getString("email") ?: ""
+            val token = backStackEntry.arguments?.getString("token") ?: ""
+            ResetPasswordScreen(
+                email = email,
+                token = token,
+                onNavigate = { route ->
+                    navController.navigate(route) {
+                        popUpTo(Screen.Login.route)
+                    }
+                },
+                onSuccess = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
+                    }
                 }
             )
         }

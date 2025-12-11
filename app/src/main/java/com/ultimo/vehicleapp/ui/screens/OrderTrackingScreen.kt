@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontStyle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ultimo.vehicleapp.ViewModels.ProgressViewModel
 import com.ultimo.vehicleapp.ViewModels.SessionViewModel
@@ -34,6 +35,9 @@ import com.ultimo.vehicleapp.ui.components.CustomButton
 import com.ultimo.vehicleapp.ui.components.CustomCard
 import com.ultimo.vehicleapp.ui.components.CustomCardWithBorder
 import com.ultimo.vehicleapp.ui.theme.*
+import kotlinx.coroutines.delay
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 
 data class TimelineItem(
     val id: Int,
@@ -57,6 +61,27 @@ data class Order(
     val timeline: List<TimelineItem>
 )
 
+// Data class untuk menggabungkan semua jenis order yang bisa dipilih
+data class TrackableOrder(
+    val id: String,
+    val pesananId: Int,
+    val serviceName: String,
+    val status: String,
+    val statusType: OrderStatusType, // pending, proses, menunggu_pembayaran
+    val progress: Int,
+    val tanggalPesan: String,
+    val estimasiSelesai: String,
+    val totalHarga: Int,
+    val timeline: List<TimelineItem>
+)
+
+enum class OrderStatusType {
+    PENDING,
+    MENUNGGU_PEMBAYARAN,
+    PROSES
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrderTrackingScreen(
     onNavigate: (String) -> Unit,
@@ -75,6 +100,9 @@ fun OrderTrackingScreen(
     // Timeline data from loadAllProgressForUser (we'll load this separately)
     var allProgressList by remember { mutableStateOf<List<com.ultimo.vehicleapp.model.Progress>>(emptyList()) }
     val coroutineScope = rememberCoroutineScope()
+
+    // Pull to refresh state
+    var isRefreshing by remember { mutableStateOf(false) }
 
     // Load card data (loadProgressForUser)
     LaunchedEffect(currentUser?.id) {
@@ -98,12 +126,126 @@ fun OrderTrackingScreen(
     }
     
     // Filter pending orders from t_pemesanan (status: pending, waiting for order)
-    val pendingOrders = userOrders.filter { order ->
+    val pendingWaitingOrders = userOrders.filter { order ->
         val status = order.status_pengerjaan?.lowercase()
-        status == "pending" || status == "waiting" || status == "waiting for order"
+        status == "pending" || status == "waiting" || status == "waiting for order" || status == "waiting for payment" || status == "waiting to payment"
     }
 
-    // Convert Progress to Order for card display
+    // Filter progress dengan status proses - dari ProgressController
+    val prosesProgressOrders = progressList.filter { progress ->
+        val status = progress.t_pemesanan?.status_pengerjaan?.lowercase()
+        status == "proses"
+    }
+
+    // Filter orders dengan status Menunggu Pembayaran - dari PemesananController
+    val menungguPembayaranOrders = userOrders.filter { order ->
+        val status = order.status_pengerjaan?.lowercase()
+        status == "menunggu pembayaran"
+    }
+
+    // Cek apakah ada active order (dari salah satu atau kedua sumber)
+    val hasActiveOrders = pendingWaitingOrders.isNotEmpty() || prosesProgressOrders.isNotEmpty() || menungguPembayaranOrders.isNotEmpty()
+
+    // ========== UNIFIED TRACKABLE ORDER LIST ==========
+    // Menggabungkan semua order dari berbagai sumber menjadi satu list yang bisa dipilih
+    
+    val allTrackableOrders = mutableListOf<TrackableOrder>()
+    
+    // 1. Tambahkan Pending Orders
+    pendingWaitingOrders.forEach { order ->
+        val timeline = listOf(
+            TimelineItem(
+                id = 1,
+                title = "Waiting for an order",
+                description = "Your order is awaiting confirmation",
+                time = order.tanggal_pesan ?: "N/A",
+                completed = false,
+                active = true,
+                icon = Icons.Default.AccessTime
+            )
+        )
+        allTrackableOrders.add(
+            TrackableOrder(
+                id = "ORD-${order.pesanan_id}",
+                pesananId = order.pesanan_id,
+                serviceName = "Order #${order.pesanan_id}",
+                status = "Pending",
+                statusType = OrderStatusType.PENDING,
+                progress = 0,
+                tanggalPesan = order.tanggal_pesan ?: "N/A",
+                estimasiSelesai = order.estimasi_selesai ?: "N/A",
+                totalHarga = order.total_estimasi_harga ?: 0,
+                timeline = timeline
+            )
+        )
+    }
+    
+    // 2. Tambahkan Menunggu Pembayaran Orders
+    menungguPembayaranOrders.forEach { order ->
+        val timeline = listOf(
+            TimelineItem(
+                id = 1,
+                title = "Waiting for payment",
+                description = "Order awaiting payment",
+                time = order.tanggal_pesan ?: "N/A",
+                completed = false,
+                active = true,
+                icon = Icons.Default.Payment
+            )
+        )
+        allTrackableOrders.add(
+            TrackableOrder(
+                id = "ORD-${order.pesanan_id}",
+                pesananId = order.pesanan_id,
+                serviceName = "Order #${order.pesanan_id}",
+                status = "Menunggu Pembayaran",
+                statusType = OrderStatusType.MENUNGGU_PEMBAYARAN,
+                progress = 10,
+                tanggalPesan = order.tanggal_pesan ?: "N/A",
+                estimasiSelesai = order.estimasi_selesai ?: "N/A",
+                totalHarga = order.total_estimasi_harga ?: 0,
+                timeline = timeline
+            )
+        )
+    }
+    
+    // 3. Tambahkan Proses Orders (dari ProgressController dengan timeline lengkap)
+    prosesProgressOrders.forEach { progress ->
+        val pesanan = progress.t_pemesanan ?: return@forEach
+        val startDate = pesanan.tanggal_pesan ?: "N/A"
+        val estimatedCompletion = pesanan.estimasi_selesai ?: "N/A"
+        val progressPercentage = progress.presentase_progress
+        
+        // Get timeline from allProgressList based on pesanan_id
+        val timelineProgressList = allProgressList.filter { 
+            it.t_pemesanan?.pesanan_id == pesanan.pesanan_id 
+        }
+        
+        // Generate timeline from keterangan_status
+        val timeline = generateTimelineFromKeterangan(
+            keteranganList = timelineProgressList.mapNotNull { it.keterangan_status },
+            startDate = startDate,
+            estimatedCompletion = estimatedCompletion,
+            progressPercentage = progressPercentage
+        )
+        
+        allTrackableOrders.add(
+            TrackableOrder(
+                id = "ORD-${pesanan.pesanan_id}",
+                pesananId = pesanan.pesanan_id ?: 0,
+                serviceName = pesanan.m_product_layanan?.nama_layanan ?: "Service",
+                status = "Proses",
+                statusType = OrderStatusType.PROSES,
+                progress = progressPercentage,
+                tanggalPesan = startDate,
+                estimasiSelesai = estimatedCompletion,
+                totalHarga = pesanan.total_estimasi_harga ?: 0,
+                timeline = timeline
+            )
+        )
+    }
+
+    // Convert Progress to Order for card display (keep for backward compatibility)
     val orders = progressList.mapNotNull { progress ->
         val pesanan = progress.t_pemesanan ?: return@mapNotNull null
         val serviceName = pesanan.m_product_layanan?.nama_layanan ?: "Service"
@@ -146,19 +288,21 @@ fun OrderTrackingScreen(
         )
     }
 
-    var selectedOrderId by remember { mutableStateOf<String?>(null) }
+    var selectedTrackableOrderId by remember { mutableStateOf<String?>(null) }
 
-    // Initialize selectedOrderId when orders are loaded
-    LaunchedEffect(orders) {
-        if (selectedOrderId == null && orders.isNotEmpty()) {
-            selectedOrderId = orders.first().id
+    // Initialize selectedTrackableOrderId with first PROSES order when orders are loaded
+    LaunchedEffect(allTrackableOrders.size) {
+        if (selectedTrackableOrderId == null && allTrackableOrders.isNotEmpty()) {
+            // Prioritaskan order dengan status PROSES untuk tracking timeline
+            val prosesOrder = allTrackableOrders.firstOrNull { it.statusType == OrderStatusType.PROSES }
+            selectedTrackableOrderId = prosesOrder?.id ?: allTrackableOrders.first().id
         }
     }
 
-    val selectedOrder = orders.find { it.id == selectedOrderId } ?: orders.firstOrNull()
+    val selectedTrackableOrder = allTrackableOrders.find { it.id == selectedTrackableOrderId } ?: allTrackableOrders.firstOrNull()
 
     // If no orders (both progress and pending), show empty state
-    if (orders.isEmpty() && pendingOrders.isEmpty()) {
+    if (orders.isEmpty() && pendingWaitingOrders.isEmpty() && menungguPembayaranOrders.isEmpty()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -216,104 +360,78 @@ fun OrderTrackingScreen(
                 }
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Order Info Card - kondisi berdasarkan status
-                // Jika ada pending order: tampilkan card dari PemesananController
-                // Jika ada proses order: tampilkan card dari ProgressController
-                
-                if (pendingOrders.isNotEmpty()) {
-                    // ========== PENDING ORDER CARD (dari PemesananController) ==========
-                    val firstPendingOrder = pendingOrders.first()
-                    CustomCard(
-                        modifier = Modifier.fillMaxWidth()
+                // ========== DROPDOWN PILIH ORDER (HANYA PROSES) ==========
+                // Tampilkan dropdown jika ada lebih dari 1 order dengan status proses
+                val prosesOrders = allTrackableOrders.filter { it.statusType == OrderStatusType.PROSES }
+                if (prosesOrders.size > 1) {
+                    Text(
+                        text = "Pilih Order untuk Tracking",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    var expanded by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = !expanded }
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "ORD-${firstPendingOrder.pesanan_id}",
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Order #${firstPendingOrder.pesanan_id}",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFFFF8E1) // Light amber
-                            ) {
-                                Text(
-                                    text = firstPendingOrder.status_pengerjaan ?: "Pending",
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    fontSize = 12.sp,
-                                    color = Color(0xFFF57C00) // Amber
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Status",
-                                fontSize = 12.sp,
-                                color = TextSecondary
+                        OutlinedTextField(
+                            value = selectedTrackableOrder?.let { 
+                                if (it.statusType == OrderStatusType.PROSES) "${it.id} • ${it.serviceName}" else ""
+                            } ?: "",
+                            onValueChange = { },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            readOnly = true,
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedBorderColor = PrimaryBlue,
+                                unfocusedBorderColor = Color.Transparent
                             )
-                            Text(
-                                text = "Menunggu Konfirmasi",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFF57C00)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Divider()
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                        )
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
                         ) {
-                            Column {
-                                Text(
-                                    text = "Tanggal Pesan",
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = firstPendingOrder.tanggal_pesan ?: "N/A",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = TextPrimary
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "Total Harga",
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Rp ${String.format("%,d", firstPendingOrder.total_estimasi_harga ?: 0)}",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = PrimaryBlue
+                            // Hanya tampilkan order dengan status PROSES
+                            prosesOrders.forEach { order ->
+                                DropdownMenuItem(
+                                    text = { 
+                                        Column {
+                                            Text(
+                                                text = "${order.id} • ${order.serviceName}",
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            Text(
+                                                text = "Progress: ${order.progress}%",
+                                                fontSize = 12.sp,
+                                                color = PrimaryBlue
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedTrackableOrderId = order.id
+                                        expanded = false
+                                    }
                                 )
                             }
                         }
                     }
-                } else if (selectedOrder != null) {
-                    // ========== PROSES ORDER CARD (dari ProgressController) ==========
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                // ========== ORDER INFO CARD (berdasarkan order yang dipilih) ==========
+                selectedTrackableOrder?.let { order ->
                     CustomCard(
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = if (order.statusType == OrderStatusType.MENUNGGU_PEMBAYARAN) {
+                            { onNavigate("${Screen.Payment.route}/${order.pesananId}") }
+                        } else null
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -321,13 +439,13 @@ fun OrderTrackingScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = selectedOrder.id,
+                                    text = order.id,
                                     fontSize = 12.sp,
                                     color = TextSecondary
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = selectedOrder.service,
+                                    text = order.serviceName,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = TextPrimary
@@ -335,77 +453,194 @@ fun OrderTrackingScreen(
                             }
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = BackgroundGray
+                                color = when (order.statusType) {
+                                    OrderStatusType.PENDING -> Color(0xFFFFF8E1)
+                                    OrderStatusType.MENUNGGU_PEMBAYARAN -> Color(0xFFFFF3E0)
+                                    OrderStatusType.PROSES -> BackgroundGray
+                                }
                             ) {
                                 Text(
-                                    text = selectedOrder.status,
+                                    text = order.status,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                     fontSize = 12.sp,
-                                    color = PrimaryBlue
+                                    color = when (order.statusType) {
+                                        OrderStatusType.PENDING -> Color(0xFFF57C00)
+                                        OrderStatusType.MENUNGGU_PEMBAYARAN -> Color(0xFFFF9800)
+                                        OrderStatusType.PROSES -> PrimaryBlue
+                                    }
                                 )
                             }
                         }
                         Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Overall Progress",
-                                fontSize = 12.sp,
-                                color = TextSecondary
-                            )
-                            Text(
-                                text = "${selectedOrder.progress}%",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = PrimaryBlue
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = selectedOrder.progress / 100f,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(12.dp)
-                                .clip(RoundedCornerShape(6.dp)),
-                            color = PrimaryBlue,
-                            trackColor = Gray200
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Divider()
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Current Step",
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = selectedOrder.currentStep,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = TextPrimary
-                                )
+                        
+                        // Tampilan berbeda berdasarkan status
+                        when (order.statusType) {
+                            OrderStatusType.PENDING, OrderStatusType.MENUNGGU_PEMBAYARAN -> {
+                                // Status info untuk pending/menunggu pembayaran
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Status",
+                                        fontSize = 12.sp,
+                                        color = TextSecondary
+                                    )
+                                    Text(
+                                        text = when (order.statusType) {
+                                            OrderStatusType.PENDING -> "Menunggu Konfirmasi"
+                                            OrderStatusType.MENUNGGU_PEMBAYARAN -> "Menunggu Pembayaran"
+                                            else -> order.status
+                                        },
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = when (order.statusType) {
+                                            OrderStatusType.PENDING -> Color(0xFFF57C00)
+                                            OrderStatusType.MENUNGGU_PEMBAYARAN -> Color(0xFFFF9800)
+                                            else -> PrimaryBlue
+                                        }
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Divider()
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "Order Date",
+                                            fontSize = 12.sp,
+                                            color = TextSecondary
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = order.tanggalPesan,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = TextPrimary
+                                        )
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = "Total Price",
+                                            fontSize = 12.sp,
+                                            color = TextSecondary
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Rp ${String.format("%,d", order.totalHarga)}",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = PrimaryBlue
+                                        )
+                                    }
+                                }
+                                
+                                // Hint untuk klik ke Payment Screen
+                                if (order.statusType == OrderStatusType.MENUNGGU_PEMBAYARAN) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = PrimaryBlue.copy(alpha = 0.1f),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Payment,
+                                                contentDescription = null,
+                                                tint = PrimaryBlue,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "Tap untuk upload bukti pembayaran",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = PrimaryBlue
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Icon(
+                                                imageVector = Icons.Default.ChevronRight,
+                                                contentDescription = null,
+                                                tint = PrimaryBlue,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "Est. Remaining",
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
+                            OrderStatusType.PROSES -> {
+                                // Progress bar untuk order yang sedang diproses
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Overall Progress",
+                                        fontSize = 12.sp,
+                                        color = TextSecondary
+                                    )
+                                    Text(
+                                        text = "${order.progress}%",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = PrimaryBlue
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                LinearProgressIndicator(
+                                    progress = order.progress / 100f,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(12.dp)
+                                        .clip(RoundedCornerShape(6.dp)),
+                                    color = PrimaryBlue,
+                                    trackColor = Gray200
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = selectedOrder.estimatedTime,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = PrimaryBlue
-                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Divider()
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "Current Step",
+                                            fontSize = 12.sp,
+                                            color = TextSecondary
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = order.timeline.find { it.active }?.title ?: "Processing",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = TextPrimary
+                                        )
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = "Est. Remaining",
+                                            fontSize = 12.sp,
+                                            color = TextSecondary
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = calculateEstimatedTime(order.progress, order.estimasiSelesai),
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = PrimaryBlue
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -413,176 +648,133 @@ fun OrderTrackingScreen(
             }
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp)
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                coroutineScope.launch {
+                    isRefreshing = true
+                    currentUser?.id?.let { id ->
+                        progressViewModel.loadProgressForUser(id, limit = 10)
+                        pemesananViewModel.loadPemesananForUser(id, limit = 20)
+                        // Refresh allProgressList
+                        val dataProgress = AllProgressRepository
+                            .getAllProgressUser(id.toString())
+                            .reversed()
+                            .take(50)
+                        allProgressList = dataProgress
+                    }
+                    delay(1000) // Short delay for visual feedback
+                    isRefreshing = false
+                }
+            },
+            modifier = Modifier.fillMaxSize()
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(24.dp)
+            ) {
+                Spacer(modifier = Modifier.height(24.dp))
 
-            // ========== PENDING ORDERS SECTION (dari t_pemesanan) ==========
-            if (pendingOrders.isNotEmpty()) {
-                Text(
-                    text = "Pending Orders",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                
-                pendingOrders.forEach { order ->
-                    val serviceName = "Order #${order.pesanan_id}"
-                    val orderId = "ORD-${order.pesanan_id}"
-                    val status = order.status_pengerjaan ?: "Pending"
-                    val tanggalPesan = order.tanggal_pesan ?: "N/A"
-                    val totalHarga = order.total_estimasi_harga ?: 0
-                    
-                    CustomCardWithBorder(
-                        onClick = { onNavigate(Screen.OrderDetail.route) },
+            // ========== PROGRESS TIMELINE SECTION ==========
+            // Timeline hanya ditampilkan untuk order dengan status PROSES
+            selectedTrackableOrder?.let { order ->
+                if (order.statusType == OrderStatusType.PROSES) {
+                    // Tampilkan Progress Timeline untuk order PROSES
+                    Text(
+                        text = "Progress Timeline",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    // Tampilkan timeline dari order yang dipilih
+                    order.timeline.forEachIndexed { index, item ->
+                        TimelineItemView(item = item, isLast = index == order.timeline.size - 1)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Estimated Completion
+                    CustomCard(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = orderId,
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = serviceName,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = TextPrimary
-                                )
-                            }
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFFFF8E1) // Light yellow/amber background
+                                shape = CircleShape,
+                                color = PrimaryBlue
                             ) {
-                                Text(
-                                    text = status,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    fontSize = 12.sp,
-                                    color = Color(0xFFF57C00) // Amber text
+                                Icon(
+                                    imageVector = Icons.Default.AccessTime,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .padding(12.dp)
                                 )
                             }
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
+                            Spacer(modifier = Modifier.width(16.dp))
                             Column {
                                 Text(
-                                    text = "Tanggal Pesan",
+                                    text = "Estimated Completion",
                                     fontSize = 12.sp,
                                     color = TextSecondary
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = tanggalPesan,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = TextPrimary
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "Total",
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Rp ${String.format("%,d", totalHarga)}",
-                                    fontSize = 14.sp,
+                                    text = order.estimasiSelesai,
+                                    fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = PrimaryBlue
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.AccessTime,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = Color(0xFFF57C00)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Menunggu konfirmasi dari admin",
-                                fontSize = 12.sp,
-                                color = Color(0xFFF57C00)
-                            )
-                        }
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
-                
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            // ========== PROGRESS TIMELINE SECTION (untuk order yang sudah proses) ==========
-            if (selectedOrder != null) {
-                Text(
-                    text = "Progress Timeline",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-
-                selectedOrder.timeline.forEachIndexed { index, item ->
-                    TimelineItemView(item = item, isLast = index == selectedOrder.timeline.size - 1)
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Estimated Completion
-                CustomCard(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                } else {
+                    // Untuk order yang bukan PROSES, tampilkan pesan info
+                    CustomCard(
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = PrimaryBlue
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Icon(
-                                imageVector = Icons.Default.AccessTime,
+                                imageVector = Icons.Default.Info,
                                 contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .padding(12.dp)
+                                tint = PrimaryBlue,
+                                modifier = Modifier.size(48.dp)
                             )
-                        }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "Estimated Completion",
-                                fontSize = 12.sp,
-                                color = TextSecondary
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = selectedOrder.estimatedCompletion,
+                                text = "Progress Timeline",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = PrimaryBlue
+                                color = TextPrimary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = when (order.statusType) {
+                                    OrderStatusType.PENDING -> "The order is still awaiting confirmation. The progress timeline will appear while the order is being processed."
+                                    OrderStatusType.MENUNGGU_PEMBAYARAN -> "Order is awaiting payment. The progress timeline will appear once the payment is confirmed."
+                                    else -> "Progress is not available yet."
+                                },
+                                fontSize = 14.sp,
+                                color = TextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }
                     }
                 }
+            }
             }
         }
     }

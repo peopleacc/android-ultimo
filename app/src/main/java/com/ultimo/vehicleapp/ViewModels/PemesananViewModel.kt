@@ -14,6 +14,7 @@ import com.ultimo.vehicleapp.Controller.TotalPending
 import com.ultimo.vehicleapp.Controller.getTotalSelesai
 import com.ultimo.vehicleapp.Controller.getTotalProses
 import com.ultimo.vehicleapp.Controller.getTotalPending
+import com.ultimo.vehicleapp.Controller.UploadGambarRepository
 import com.ultimo.vehicleapp.model.PemesananInsert
 import com.ultimo.vehicleapp.model.pemesanan
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +37,18 @@ class PemesananViewModel : ViewModel() {
     // StateFlow untuk total pending (pending + waiting for order)
     private val _totalPending = MutableStateFlow(0)
     val totalPending: StateFlow<Int> = _totalPending
+
+
+    // Upload State untuk tracking proses upload
+    sealed class UploadState {
+        object Idle : UploadState()
+        object Loading : UploadState()
+        data class Success(val imageUrl: String) : UploadState()
+        data class Error(val message: String) : UploadState()
+    }
+
+    private val _uploadState = MutableStateFlow<UploadState>(UploadState.Idle)
+    val uploadState: StateFlow<UploadState> = _uploadState
 
     init {
         loadPemesanan()
@@ -142,6 +155,57 @@ class PemesananViewModel : ViewModel() {
                 loadPemesananForUser(userId, limit = 20)
             }
         }
+    }
+
+    /**
+     * Upload bukti pembayaran ke Supabase Storage dan update upload_gambar di database
+     * Status pembayaran TIDAK diubah (tetap menunggu pembayaran)
+     * @param pesananId ID pesanan
+     * @param imageBytes Data gambar dalam ByteArray
+     * @param fileExtension Ekstensi file (default: jpg)
+     */
+    fun uploadBuktiPembayaran(
+        pesananId: Int,
+        imageBytes: ByteArray,
+        fileExtension: String = "jpg"
+    ) {
+        viewModelScope.launch {
+            _uploadState.value = UploadState.Loading
+            
+            try {
+                // Upload gambar ke Supabase Storage
+                val imageUrl = UploadGambarRepository.uploadGambar(
+                    pesananId = pesananId,
+                    imageBytes = imageBytes,
+                    fileExtension = fileExtension
+                )
+                
+                if (imageUrl != null) {
+                    // Update kolom upload_gambar di database
+                    val updateSuccess = UploadGambarRepository.updateUploadGambar(
+                        pesananId = pesananId,
+                        imageUrl = imageUrl
+                    )
+                    
+                    if (updateSuccess) {
+                        _uploadState.value = UploadState.Success(imageUrl)
+                    } else {
+                        _uploadState.value = UploadState.Error("Gagal menyimpan URL gambar ke database")
+                    }
+                } else {
+                    _uploadState.value = UploadState.Error("Gagal mengupload gambar ke storage")
+                }
+            } catch (e: Exception) {
+                _uploadState.value = UploadState.Error("Error: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Reset upload state ke Idle
+     */
+    fun resetUploadState() {
+        _uploadState.value = UploadState.Idle
     }
 }
 

@@ -168,6 +168,21 @@ fun LoginScreen(
                             )
                         }
 
+                        // 🔹 Forgot Password Link
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(onClick = { onNavigate(Screen.ForgotPassword.route) }) {
+                                Text(
+                                    text = "Lupa Password?",
+                                    fontSize = 14.sp,
+                                    color = PrimaryBlue,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(24.dp))
 
                         // 🔹 Tombol Login

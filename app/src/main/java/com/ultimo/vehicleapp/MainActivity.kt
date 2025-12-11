@@ -76,9 +76,9 @@ class MainActivity : ComponentActivity() {
                                 if (currentRoute in listOf(
                                         Screen.Home.route,
                                         Screen.Orders.route,
+                                        Screen.Catalog.route,
                                         Screen.Tracking.route,
-                                        Screen.Profile.route,
-                                        Screen.OrderDetail.route
+                                        Screen.Profile.route
                                     )
                                 ) {
                                     CustomBottomNavigation(

@@ -75,17 +75,21 @@ fun ServiceOrderScreen(
     productViewModel: ProductViewModel = viewModel(),
     materialViewModel: MaterialRepository = viewModel(),
     initialStep: Int = 1,
-    initialProductId: Int? = null
+    initialProductId: Int? = null,
+    initialMaterialId: Int? = null
 ) {
-    var step by remember { mutableStateOf(initialStep) }
+    // Jika materialId sudah diberikan, langsung ke step review (step 2)
+    val effectiveInitialStep = if (initialMaterialId != null) 2 else initialStep
+    var step by remember { mutableStateOf(effectiveInitialStep) }
     var selectedDesign by remember { mutableStateOf(initialProductId ?: 0) }
-    var selectedMaterial by remember { mutableStateOf(1) }
+    var selectedMaterial by remember { mutableStateOf(initialMaterialId ?: 1) }
     var notes by remember { mutableStateOf("") }
     
     // Update step and selectedDesign when initial values change
-    LaunchedEffect(initialStep, initialProductId) {
-        step = initialStep
+    LaunchedEffect(initialStep, initialProductId, initialMaterialId) {
+        step = if (initialMaterialId != null) 2 else initialStep
         initialProductId?.let { selectedDesign = it }
+        initialMaterialId?.let { selectedMaterial = it }
     }
 
     val products by productViewModel.products.collectAsState()
@@ -111,8 +115,8 @@ fun ServiceOrderScreen(
             id = p.product_id,
             name = p.nama_layanan,
             price = p.harga ?: 0,
-            imageUrl = p.gambar_url,
-            description = "Premium design option"
+            imageUrl = p.gambar_url ?: "",
+            description = p.deskripsi ?: "Premium design option"
         )
     }
 
@@ -134,7 +138,6 @@ fun ServiceOrderScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundPink)
-            .padding(bottom = 80.dp)
     ) {
         // Header
         Box(
@@ -169,59 +172,6 @@ fun ServiceOrderScreen(
                         color = Color.White
                     )
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Progress Steps: 3 tahapan (Design -> Material -> Review)
-                val stepLabels = listOf(1, 2, 3)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    stepLabels.forEachIndexed { index, label ->
-                        val sIndex = index + 1 // posisi logis (1..3)
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = if (sIndex <= step) Color.White else Color.White.copy(alpha = 0.3f),
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    if (sIndex < step) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = PrimaryBlue,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    } else {
-                                        Text(
-                                            text = label.toString(),
-                                            color = if (sIndex <= step) PrimaryBlue else Color.White,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                            }
-                            if (index < stepLabels.size - 1) {
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(2.dp)
-                                        .background(
-                                            if (sIndex < step) Color.White else Color.White.copy(
-                                                alpha = 0.3f
-                                            )
-                                        )
-                                )
-                            }
-                        }
-                    }
-                }
             }
         }
 
@@ -238,22 +188,18 @@ fun ServiceOrderScreen(
                     onPay = { onNavigate(Screen.Payment.route) }
                 )
             } else {
-                // 3 posisi logis: 1 (Design) -> 2 (Material) -> 3 (Review) -> Navigate to Payment
+                // Flow:
+                // - Jika materialId dari CatalogDesignScreen: langsung ke step 2 (Review)
+                // - Jika tidak ada materialId: step 1 (Select Material) -> step 2 (Review)
                 when (step) {
-                    1 -> Step1Content(
-                        designs,
-                        selectedDesign,
-                        onDesignSelected = { selectedDesign = it },
-                        onContinue = { step++ }
-                    )
-                    2 -> Step2Content(
+                    1 -> Step2Content(
                         selectedDesignData,
                         materials,
                         selectedMaterial,
                         onMaterialSelected = { selectedMaterial = it },
                         onContinue = { step++ }
                     )
-                    3 -> Step4Content(
+                    2 -> Step4Content(
                         selectedDesignData,
                         selectedMaterialData,
                         notes,
@@ -395,9 +341,9 @@ fun ServiceOrderScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                // Tombol di bottom action bar hanya untuk step 1 dan 2
-                // Step 3 menggunakan tombol "Progres Order" di Step4Content
-                if (step < 3) {
+                // Tombol di bottom action bar hanya untuk step 1
+                // Step 2 menggunakan tombol "Progres Order" di Step4Content
+                if (step < 2) {
                     Button(
                         onClick = {
                             step++

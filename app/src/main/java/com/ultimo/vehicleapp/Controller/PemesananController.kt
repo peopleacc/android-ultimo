@@ -7,6 +7,13 @@ import com.ultimo.vehicleapp.model.t_pemesanan
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Count
+import io.github.jan.supabase.storage.storage
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class BuktiPembayaranUpdate(
+    val bukti_pembayaran: String
+)
 
 object PemesananRepository {
     suspend fun getAllPemesanan(): List<pemesanan> {
@@ -185,5 +192,116 @@ suspend fun getTotalPending(userId: String): List<TotalPending.DataPending> {
     } catch (e: Exception) {
         println("Error getting total pending: ${e.message}")
         emptyList()
+    }
+}
+
+/**
+ * Repository untuk mengelola bukti pembayaran
+ */
+object BuktiPembayaranRepository {
+    /**
+     * Upload image ke Supabase Storage bucket "gambar"
+     * @param pesananId ID pesanan untuk nama file
+     * @param imageBytes Data gambar dalam bentuk ByteArray
+     * @param fileExtension Ekstensi file (contoh: "jpg", "png")
+     * @return URL publik dari file yang diupload, atau null jika gagal
+     */
+    suspend fun uploadBuktiPembayaran(
+        pesananId: Int,
+        imageBytes: ByteArray,
+        fileExtension: String = "jpg"
+    ): String? {
+        return try {
+            val bucket = supabase.storage.from("gambar")
+            val timestamp = System.currentTimeMillis()
+            val path = "bukti_pembayaran/${pesananId}_${timestamp}.$fileExtension"
+            
+            bucket.upload(path, imageBytes, upsert = true)
+            bucket.publicUrl(path)
+        } catch (e: Exception) {
+            println("Error uploading bukti pembayaran: ${e.message}")
+            null
+        }
+    }
+    
+    /**
+     * Update kolom bukti_pembayaran di t_pemesanan
+     * Status pesanan TIDAK diubah
+     * @param pesananId ID pesanan yang akan diupdate
+     * @param imageUrl URL gambar bukti pembayaran
+     * @return true jika berhasil, false jika gagal
+     */
+    suspend fun updateBuktiPembayaran(
+        pesananId: Int,
+        imageUrl: String
+    ): Boolean {
+        return try {
+            supabase.from("t_pemesanan")
+                .update(BuktiPembayaranUpdate(bukti_pembayaran = imageUrl)) {
+                    filter { eq("pesanan_id", pesananId) }
+                }
+            true
+        } catch (e: Exception) {
+            println("Error updating bukti pembayaran: ${e.message}")
+            false
+        }
+    }
+}
+
+@Serializable
+data class UploadGambarUpdate(
+    val upload_gambar: String
+)
+
+/**
+ * Repository untuk mengelola upload gambar bukti pembayaran
+ */
+object UploadGambarRepository {
+    /**
+     * Upload image ke Supabase Storage bucket "gambar"
+     * @param pesananId ID pesanan untuk nama file
+     * @param imageBytes Data gambar dalam bentuk ByteArray
+     * @param fileExtension Ekstensi file (contoh: "jpg", "png")
+     * @return URL publik dari file yang diupload, atau null jika gagal
+     */
+    suspend fun uploadGambar(
+        pesananId: Int,
+        imageBytes: ByteArray,
+        fileExtension: String = "jpg"
+    ): String? {
+        return try {
+            val bucket = supabase.storage.from("gambar")
+            val timestamp = System.currentTimeMillis()
+            val path = "upload_gambar/${pesananId}_${timestamp}.$fileExtension"
+            
+            bucket.upload(path, imageBytes, upsert = true)
+            bucket.publicUrl(path)
+        } catch (e: Exception) {
+            println("Error uploading gambar: ${e.message}")
+            null
+        }
+    }
+    
+    /**
+     * Update kolom upload_gambar di t_pemesanan
+     * Status pembayaran TIDAK diubah (tetap "menunggu pembayaran")
+     * @param pesananId ID pesanan yang akan diupdate
+     * @param imageUrl URL gambar bukti pembayaran
+     * @return true jika berhasil, false jika gagal
+     */
+    suspend fun updateUploadGambar(
+        pesananId: Int,
+        imageUrl: String
+    ): Boolean {
+        return try {
+            supabase.from("t_pemesanan")
+                .update(UploadGambarUpdate(upload_gambar = imageUrl)) {
+                    filter { eq("pesanan_id", pesananId) }
+                }
+            true
+        } catch (e: Exception) {
+            println("Error updating upload_gambar: ${e.message}")
+            false
+        }
     }
 }
