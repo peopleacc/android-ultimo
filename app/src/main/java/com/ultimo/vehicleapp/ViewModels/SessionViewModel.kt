@@ -7,6 +7,8 @@ import com.ultimo.vehicleapp.Config.ApiClient
 import com.ultimo.vehicleapp.Controller.SessionResponse
 import com.ultimo.vehicleapp.Controller.UpdatePersonalInfoRequest
 import com.ultimo.vehicleapp.Controller.UpdatePersonalInfoResponse
+import com.ultimo.vehicleapp.Controller.ChangePasswordRequest
+import com.ultimo.vehicleapp.Controller.ChangePasswordResponse
 import com.ultimo.vehicleapp.Controller.UserData
 import com.ultimo.vehicleapp.data.UserDatabaseHelper
 import kotlinx.coroutines.Dispatchers
@@ -399,6 +401,69 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         _updateStatus.value = null
         _updateMessage.value = null
     }
+
+    /**
+     * Change password menggunakan API terpisah
+     */
+    fun changePassword(
+        currentPassword: String,
+        newPassword: String,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        val currentToken = _token.value
+        if (currentToken.isNullOrEmpty()) {
+            _updateStatus.value = "error"
+            _updateMessage.value = "Token tidak ditemukan. Silakan login ulang."
+            onError("Token tidak ditemukan")
+            return
+        }
+
+        _isUpdating.value = true
+        _updateStatus.value = null
+        _updateMessage.value = null
+
+        val request = ChangePasswordRequest(
+            token = currentToken,
+            current_password = currentPassword,
+            new_password = newPassword
+        )
+
+        ApiClient.instance.changePassword(currentToken, request).enqueue(object : Callback<ChangePasswordResponse> {
+            override fun onResponse(
+                call: Call<ChangePasswordResponse>,
+                response: Response<ChangePasswordResponse>
+            ) {
+                _isUpdating.value = false
+                if (response.isSuccessful && response.body()?.status == "success") {
+                    _updateStatus.value = "success"
+                    _updateMessage.value = response.body()?.message ?: "Password berhasil diubah"
+                    onSuccess()
+                } else {
+                    _updateStatus.value = "error"
+                    _updateMessage.value = response.body()?.message ?: "Gagal mengubah password"
+                    onError(_updateMessage.value ?: "Unknown error")
+                }
+            }
+
+            override fun onFailure(call: Call<ChangePasswordResponse>, t: Throwable) {
+                _isUpdating.value = false
+                _updateStatus.value = "error"
+                _updateMessage.value = "Koneksi gagal: ${t.message}"
+                onError(_updateMessage.value ?: "Network error")
+            }
+        })
+    }
+
+    /**
+     * Update foto_profile di user state setelah upload foto berhasil
+     * Ini untuk menyinkronkan state setelah ProfilePhotoRepository mengupdate database
+     */
+    fun updateUserFotoProfile(fotoUrl: String) {
+        val currentUser = _user.value
+        if (currentUser != null) {
+            _user.value = currentUser.copy(foto_profile = fotoUrl)
+            println("SessionViewModel: foto_profile updated to $fotoUrl")
+        }
+    }
 }
-
-

@@ -245,8 +245,9 @@ fun OTPInputField(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         decorationBox = {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
             ) {
                 repeat(6) { index ->
                     val char = otp.getOrNull(index)?.toString() ?: ""
@@ -254,7 +255,8 @@ fun OTPInputField(
 
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
+                            .weight(1f)
+                            .aspectRatio(1f)
                             .border(
                                 width = 2.dp,
                                 color = if (isFocused) PrimaryBlue else Gray300,

@@ -360,32 +360,32 @@ fun OrderTrackingScreen(
                 }
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // ========== DROPDOWN PILIH ORDER (HANYA PROSES) ==========
-                // Tampilkan dropdown jika ada lebih dari 1 order dengan status proses
-                val prosesOrders = allTrackableOrders.filter { it.statusType == OrderStatusType.PROSES }
-                if (prosesOrders.size > 1) {
+                // ========== DROPDOWN 1: PENDING/MENUNGGU PEMBAYARAN ORDERS ==========
+                val pendingPaymentOrders = allTrackableOrders.filter { 
+                    it.statusType == OrderStatusType.PENDING || it.statusType == OrderStatusType.MENUNGGU_PEMBAYARAN 
+                }
+                if (pendingPaymentOrders.isNotEmpty()) {
                     Text(
-                        text = "Pilih Order untuk Tracking",
+                        text = "Waiting Orders (${pendingPaymentOrders.size})",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color.White
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    var expanded by remember { mutableStateOf(false) }
+                    var expandedPending by remember { mutableStateOf(false) }
                     ExposedDropdownMenuBox(
-                        expanded = expanded,
-                        onExpandedChange = { expanded = !expanded }
+                        expanded = expandedPending,
+                        onExpandedChange = { expandedPending = !expandedPending }
                     ) {
+                        val selectedPending = pendingPaymentOrders.find { it.id == selectedTrackableOrderId }
                         OutlinedTextField(
-                            value = selectedTrackableOrder?.let { 
-                                if (it.statusType == OrderStatusType.PROSES) "${it.id} • ${it.serviceName}" else ""
-                            } ?: "",
+                            value = selectedPending?.let { "${it.id} • ${it.status}" } ?: "Select waiting order...",
                             onValueChange = { },
                             modifier = Modifier
                                 .menuAnchor()
                                 .fillMaxWidth(),
                             readOnly = true,
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedPending) },
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = Color.White,
@@ -395,10 +395,96 @@ fun OrderTrackingScreen(
                             )
                         )
                         ExposedDropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = { expanded = false }
+                            expanded = expandedPending,
+                            onDismissRequest = { expandedPending = false }
                         ) {
-                            // Hanya tampilkan order dengan status PROSES
+                            pendingPaymentOrders.forEach { order ->
+                                DropdownMenuItem(
+                                    text = { 
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = order.id,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                                Text(
+                                                    text = order.serviceName,
+                                                    fontSize = 12.sp,
+                                                    color = TextSecondary
+                                                )
+                                            }
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = when (order.statusType) {
+                                                    OrderStatusType.PENDING -> Color(0xFFFFF8E1)
+                                                    OrderStatusType.MENUNGGU_PEMBAYARAN -> Color(0xFFFFF3E0)
+                                                    else -> BackgroundGray
+                                                }
+                                            ) {
+                                                Text(
+                                                    text = order.status,
+                                                    fontSize = 10.sp,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    color = when (order.statusType) {
+                                                        OrderStatusType.PENDING -> Color(0xFFF57C00)
+                                                        OrderStatusType.MENUNGGU_PEMBAYARAN -> Color(0xFFFF9800)
+                                                        else -> PrimaryBlue
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedTrackableOrderId = order.id
+                                        expandedPending = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                // ========== DROPDOWN 2: PROSES ORDERS ==========
+                val prosesOrders = allTrackableOrders.filter { it.statusType == OrderStatusType.PROSES }
+                if (prosesOrders.isNotEmpty()) {
+                    Text(
+                        text = "Processing Orders (${prosesOrders.size})",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    var expandedProses by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(
+                        expanded = expandedProses,
+                        onExpandedChange = { expandedProses = !expandedProses }
+                    ) {
+                        val selectedProses = prosesOrders.find { it.id == selectedTrackableOrderId }
+                        OutlinedTextField(
+                            value = selectedProses?.let { "${it.id} • ${it.serviceName}" } ?: "Select processing order...",
+                            onValueChange = { },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            readOnly = true,
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedProses) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedBorderColor = PrimaryBlue,
+                                unfocusedBorderColor = Color.Transparent
+                            )
+                        )
+                        ExposedDropdownMenu(
+                            expanded = expandedProses,
+                            onDismissRequest = { expandedProses = false }
+                        ) {
                             prosesOrders.forEach { order ->
                                 DropdownMenuItem(
                                     text = { 
@@ -416,7 +502,7 @@ fun OrderTrackingScreen(
                                     },
                                     onClick = {
                                         selectedTrackableOrderId = order.id
-                                        expanded = false
+                                        expandedProses = false
                                     }
                                 )
                             }

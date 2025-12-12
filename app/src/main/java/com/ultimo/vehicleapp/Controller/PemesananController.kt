@@ -305,3 +305,67 @@ object UploadGambarRepository {
         }
     }
 }
+
+@Serializable
+data class FotoProfileUpdate(
+    val foto_profile: String
+)
+
+/**
+ * Repository untuk mengelola upload foto profile ke Supabase Storage
+ */
+object ProfilePhotoRepository {
+    /**
+     * Upload foto profile ke Supabase Storage bucket "gambar"
+     * @param userId ID user untuk nama file
+     * @param imageBytes Data gambar dalam bentuk ByteArray
+     * @param fileExtension Ekstensi file (contoh: "jpg", "png")
+     * @return URL publik dari file yang diupload, atau null jika gagal
+     */
+    suspend fun uploadProfilePhoto(
+        userId: Int,
+        imageBytes: ByteArray,
+        fileExtension: String = "jpg"
+    ): String? {
+        return try {
+            println("ProfilePhotoRepository: Starting upload for user $userId, bytes: ${imageBytes.size}")
+            val bucket = supabase.storage.from("gambar")
+            val timestamp = System.currentTimeMillis()
+            val path = "profile_photos/${userId}_${timestamp}.$fileExtension"
+            
+            bucket.upload(path, imageBytes, upsert = true)
+            val publicUrl = bucket.publicUrl(path)
+            println("ProfilePhotoRepository: Upload successful, URL: $publicUrl")
+            publicUrl
+        } catch (e: Exception) {
+            println("ProfilePhotoRepository: Error uploading profile photo: ${e.message}")
+            e.printStackTrace()
+            null
+        }
+    }
+    
+    /**
+     * Update kolom foto_profile di m_customers
+     * @param userId ID user yang akan diupdate
+     * @param imageUrl URL foto profile
+     * @return true jika berhasil, false jika gagal
+     */
+    suspend fun updateFotoProfile(
+        userId: Int,
+        imageUrl: String
+    ): Boolean {
+        return try {
+            println("ProfilePhotoRepository: Updating foto_profile for user $userId with URL: $imageUrl")
+            supabase.from("m_customers")
+                .update(FotoProfileUpdate(foto_profile = imageUrl)) {
+                    filter { eq("user_id", userId) }
+                }
+            println("ProfilePhotoRepository: foto_profile update successful")
+            true
+        } catch (e: Exception) {
+            println("ProfilePhotoRepository: Error updating foto_profile: ${e.message}")
+            e.printStackTrace()
+            false
+        }
+    }
+}

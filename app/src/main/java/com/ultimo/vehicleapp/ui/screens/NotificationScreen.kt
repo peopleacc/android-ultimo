@@ -175,7 +175,7 @@ fun NotificationListItem(
     }
 
     val dateFormat = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
-    val timeText = dateFormat.format(Date(notification.timestamp))
+    val timeText = dateFormat.format(Date(notification.timestampMillis))
 
     Surface(
         modifier = Modifier

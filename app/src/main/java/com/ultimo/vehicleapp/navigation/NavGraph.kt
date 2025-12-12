@@ -339,6 +339,16 @@ fun NavGraph(
                 }
             )
         }
+
+        // Change Password Screen
+        composable(Screen.ChangePassword.route) {
+            ChangePasswordScreen(
+                sessionViewModel = sessionViewModel,
+                onNavigate = { route ->
+                    navController.navigate(route)
+                }
+            )
+        }
     }
 }
 

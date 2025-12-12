@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -30,11 +31,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.ultimo.vehicleapp.ViewModels.SessionViewModel
+import com.ultimo.vehicleapp.Controller.ProfilePhotoRepository
 import com.ultimo.vehicleapp.navigation.Screen
 import com.ultimo.vehicleapp.ui.components.CustomButton
 import com.ultimo.vehicleapp.ui.components.CustomCard
 import com.ultimo.vehicleapp.ui.components.CustomTextField
 import com.ultimo.vehicleapp.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun PersonalInformationScreen(
@@ -63,8 +66,13 @@ fun PersonalInformationScreen(
     var email by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
-    var newPassword by remember { mutableStateOf("") }
     var profileImageUri by remember { mutableStateOf<Uri?>(null) }
+    var currentProfilePhotoUrl by remember { mutableStateOf<String?>(null) }
+    var isUploadingPhoto by remember { mutableStateOf(false) }
+    var uploadedPhotoUrl by remember { mutableStateOf<String?>(null) }
+    
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     
     // Sync state with user data
     LaunchedEffect(user) {
@@ -73,6 +81,7 @@ fun PersonalInformationScreen(
             email = userData.email ?: ""
             phone = userData.phone ?: ""
             address = userData.address ?: ""
+            currentProfilePhotoUrl = userData.foto_profile
         }
     }
     
@@ -80,6 +89,42 @@ fun PersonalInformationScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         profileImageUri = uri
+        // Upload foto segera setelah dipilih
+        uri?.let { selectedUri ->
+            val userId = user?.id
+            if (userId != null) {
+                coroutineScope.launch {
+                    isUploadingPhoto = true
+                    try {
+                        val inputStream = context.contentResolver.openInputStream(selectedUri)
+                        val imageBytes = inputStream?.readBytes()
+                        inputStream?.close()
+                        
+                        if (imageBytes != null) {
+                            val photoUrl = ProfilePhotoRepository.uploadProfilePhoto(
+                                userId = userId,
+                                imageBytes = imageBytes,
+                                fileExtension = "jpg"
+                            )
+                            if (photoUrl != null) {
+                                uploadedPhotoUrl = photoUrl
+                                // Update di database
+                                val updateSuccess = ProfilePhotoRepository.updateFotoProfile(userId, photoUrl)
+                                if (updateSuccess) {
+                                    // ✅ Update user state in SessionViewModel
+                                    sessionViewModel.updateUserFotoProfile(photoUrl)
+                                    currentProfilePhotoUrl = photoUrl
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        println("Error uploading photo: ${e.message}")
+                    } finally {
+                        isUploadingPhoto = false
+                    }
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -146,23 +191,68 @@ fun PersonalInformationScreen(
                                 BorderStroke(3.dp, Color.White),
                                 CircleShape
                             )
-                            .clickable { imagePickerLauncher.launch("image/*") },
+                            .clickable { if (!isUploadingPhoto) imagePickerLauncher.launch("image/*") },
                         contentAlignment = Alignment.Center
                     ) {
-                        if (profileImageUri != null) {
-                            AsyncImage(
-                                model = profileImageUri,
-                                contentDescription = "Profile Picture",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = "Profile Picture",
-                                modifier = Modifier.size(60.dp),
-                                tint = TextSecondary
-                            )
+                        when {
+                            isUploadingPhoto -> {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(40.dp),
+                                    color = PrimaryBlue
+                                )
+                            }
+                            profileImageUri != null -> {
+                                AsyncImage(
+                                    model = profileImageUri,
+                                    contentDescription = "Profile Picture",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+                            uploadedPhotoUrl != null -> {
+                                AsyncImage(
+                                    model = uploadedPhotoUrl,
+                                    contentDescription = "Profile Picture",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+                            currentProfilePhotoUrl != null -> {
+                                AsyncImage(
+                                    model = currentProfilePhotoUrl,
+                                    contentDescription = "Profile Picture",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+                            else -> {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = "Profile Picture",
+                                    modifier = Modifier.size(60.dp),
+                                    tint = TextSecondary
+                                )
+                            }
+                        }
+                        
+                        // Camera icon overlay
+                        if (!isUploadingPhoto) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(PrimaryBlue)
+                                    .border(2.dp, Color.White, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CameraAlt,
+                                    contentDescription = "Change Photo",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -224,48 +314,56 @@ fun PersonalInformationScreen(
                 }
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Password Change Card
+                // Change Password Link Card
                 CustomCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = null,
-                                tint = PrimaryBlue,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Change Password",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = PrimaryBlue
-                            )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigate(Screen.ChangePassword.route) },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = BackgroundGray
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = PrimaryBlue,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .padding(10.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Change Password",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Update your account password",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary
+                                )
+                            }
                         }
-                        
-                        PasswordField(
-                            icon = Icons.Default.Lock,
-                            label = "New Password (Optional)",
-                            value = newPassword,
-                            onValueChange = { newPassword = it }
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = TextTertiary,
+                            modifier = Modifier.size(24.dp)
                         )
-                        
-                        if (newPassword.isNotEmpty() && newPassword.length < 6) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Password minimal 6 karakter",
-                                fontSize = 12.sp,
-                                color = Color(0xFFFF9800),
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
                     }
                 }
+                
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // Save Button
@@ -278,9 +376,8 @@ fun PersonalInformationScreen(
                             phone = phone,
                             address = address.takeIf { it.isNotEmpty() },
                             currentPassword = null,
-                            newPassword = newPassword.takeIf { it.isNotEmpty() && it.length >= 6 },
+                            newPassword = null,
                             onSuccess = {
-                                newPassword = ""
                                 onNavigate(Screen.Profile.route)
                             },
                             onError = { }

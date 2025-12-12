@@ -216,7 +216,7 @@ fun HomeScreen(
                             .size(40.dp)
                             .clip(RoundedCornerShape(20.dp))
                             .background(Color.White.copy(alpha = 0.2f))
-                            .clickable { notificationViewModel.markAllAsRead() },
+                            .clickable { onNavigate(Screen.Notifications.route) },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -311,6 +311,73 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
+            // Catalog
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = null,
+                        tint = PrimaryBlue,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Katalog Jok Design",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                }
+                TextButton(onClick = { onNavigate(Screen.Catalog.route) }) {
+                    Text(
+                        text = "View All",
+                        fontSize = 14.sp,
+                        color = PrimaryBlue
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = PrimaryBlue
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(seatDesigns.take(2)) { design ->
+                    SeatDesignCard(
+                        design = design,
+                        onClick = { 
+                            // Navigate to CatalogDesignScreen with selected product
+                            onNavigate("${Screen.CatalogDesign.route}/${design.id}")
+                        }
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Tombol Lakukan Pembayaran (jika ada order dengan status waiting for payment)
+
+
+            // CTA Button
+            CustomButton(
+                text = "Order New Service",
+                onClick = { handleOrderNavigation() },
+                modifier = Modifier.fillMaxWidth(),
+                icon = Icons.Default.ShoppingCart
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Location Shop Section
             val context = LocalContext.current
             val storeName = "Ultimo Vehicle Seat"
             val storeAddress = "jl pisangan lama 2 no 3"
@@ -391,71 +458,6 @@ fun HomeScreen(
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
-
-            // Catalog
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        tint = PrimaryBlue,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Katalog Jok Design",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
-                }
-                TextButton(onClick = { onNavigate(Screen.Catalog.route) }) {
-                    Text(
-                        text = "View All",
-                        fontSize = 14.sp,
-                        color = PrimaryBlue
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = PrimaryBlue
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                items(seatDesigns.take(2)) { design ->
-                    SeatDesignCard(
-                        design = design,
-                        onClick = { 
-                            // Navigate to CatalogDesignScreen with selected product
-                            onNavigate("${Screen.CatalogDesign.route}/${design.id}")
-                        }
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Tombol Lakukan Pembayaran (jika ada order dengan status waiting for payment)
-
-
-            // CTA Button
-            CustomButton(
-                text = "Order New Service",
-                onClick = { handleOrderNavigation() },
-                modifier = Modifier.fillMaxWidth(),
-                icon = Icons.Default.ShoppingCart
-            )
         }
     }
     

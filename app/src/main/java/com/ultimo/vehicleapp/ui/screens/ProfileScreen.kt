@@ -21,10 +21,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ultimo.vehicleapp.ViewModels.SessionViewModel
+import com.ultimo.vehicleapp.ViewModels.PemesananViewModel
 import com.ultimo.vehicleapp.navigation.Screen
 import com.ultimo.vehicleapp.ui.components.CustomCard
 import com.ultimo.vehicleapp.ui.components.CustomCardWithBorder
 import com.ultimo.vehicleapp.ui.theme.*
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.clip
 
 data class MenuItem(
     val id: Int,
@@ -40,11 +45,19 @@ data class MenuItem(
 fun ProfileScreen(
     sessionViewModel: SessionViewModel,
     onNavigate: (String) -> Unit,
-    onLogout: (() -> Unit)? = null
+    onLogout: (() -> Unit)? = null,
+    pemesananViewModel: PemesananViewModel = viewModel()
 ) {
     val user by sessionViewModel.user.collectAsState()
     val isLoading by sessionViewModel.isLoading.collectAsState()
     val token by sessionViewModel.token.collectAsState()
+    
+    // Order counts from PemesananViewModel
+    val totalSelesai by pemesananViewModel.totalSelesai.collectAsState()
+    val totalProses by pemesananViewModel.totalProses.collectAsState()
+    val totalPending by pemesananViewModel.totalPending.collectAsState()
+    val pemesananList by pemesananViewModel.pemesanan.collectAsState()
+    val totalOrders = pemesananList.size
     
     var hasTriedFetch by remember { mutableStateOf(false) }
 
@@ -54,6 +67,16 @@ fun ProfileScreen(
         if (user == null && !currentToken.isNullOrEmpty() && !isLoading && !hasTriedFetch) {
             hasTriedFetch = true
             sessionViewModel.fetchUserDataAfterLogin(currentToken)
+        }
+    }
+    
+    // Load order counts when user is available
+    LaunchedEffect(user?.id) {
+        user?.id?.let { id ->
+            pemesananViewModel.loadPemesananForUser(id, limit = 100)
+            pemesananViewModel.loadTotalSelesai(id)
+            pemesananViewModel.loadTotalProses(id)
+            pemesananViewModel.loadTotalPending(id)
         }
     }
     
@@ -109,8 +132,8 @@ fun ProfileScreen(
         "phone" to (user?.phone ?: "-"),
         "address" to (user?.address ?: "-"),
         "memberSince" to "2025", // Jika ingin dinamis, kasih dari API
-        "totalOrders" to 0,
-        "completedOrders" to 0
+        "totalOrders" to totalOrders,
+        "completedOrders" to totalSelesai
     )
 
     var notificationsEnabled by remember { mutableStateOf(true) }
@@ -175,15 +198,26 @@ fun ProfileScreen(
                             modifier = Modifier.size(80.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = userProfile["name"]?.toString()
-                                        ?.split(" ")
-                                        ?.mapNotNull { it.firstOrNull()?.toString() }
-                                        ?.joinToString("") ?: "JD",
-                                    fontSize = 32.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
+                                if (user?.foto_profile != null) {
+                                    AsyncImage(
+                                        model = user?.foto_profile,
+                                        contentDescription = "Profile Picture",
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(CircleShape),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Text(
+                                        text = userProfile["name"]?.toString()
+                                            ?.split(" ")
+                                            ?.mapNotNull { it.firstOrNull()?.toString() }
+                                            ?.joinToString("") ?: "JD",
+                                        fontSize = 32.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
                             }
                         }
                         Spacer(modifier = Modifier.width(16.dp))
@@ -288,6 +322,7 @@ fun ProfileScreen(
                     onClick = {
                         when (item.action) {
                             "edit-profile" -> onNavigate(Screen.PersonalInfo.route)
+                            "notifications" -> onNavigate(Screen.Notifications.route)
                             "support" -> onNavigate(Screen.HelpSupport.route)
                         }
                     },

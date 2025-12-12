@@ -26,8 +26,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import coil.compose.AsyncImage
 import com.ultimo.vehicleapp.Controller.BuktiPembayaranRepository
+import com.ultimo.vehicleapp.R
 import com.ultimo.vehicleapp.navigation.Screen
 import com.ultimo.vehicleapp.ui.components.CustomButton
 import com.ultimo.vehicleapp.ui.components.CustomCard
@@ -592,20 +595,20 @@ fun QRISInstructions() {
         )
         Surface(
             shape = RoundedCornerShape(12.dp),
-            color = Gray200,
+            color = Color.White,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
                 .padding(bottom = 16.dp)
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.QrCode,
-                    contentDescription = null,
-                    modifier = Modifier.size(96.dp),
-                    tint = Gray400
-                )
-            }
+            Image(
+                painter = painterResource(id = R.drawable.qris),
+                contentDescription = "QRIS Code",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(250.dp)
+                    .padding(8.dp),
+                contentScale = ContentScale.Fit
+            )
         }
         Column {
             InstructionStep("1. Open your e-wallet app")

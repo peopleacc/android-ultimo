@@ -1,8 +1,10 @@
 package com.ultimo.vehicleapp.Controller
 
+import com.ultimo.vehicleapp.model.AppNotification
 import retrofit2.Call
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Query
 
@@ -42,7 +44,8 @@ data class UserData(
     val nama: String?,
     val email: String?,
     val phone: String?,
-    val address : String?
+    val address : String?,
+    val foto_profile: String? = null
 )
 
 data class SessionResponse(
@@ -58,7 +61,8 @@ data class UpdatePersonalInfoRequest(
     val email: String,
     val phone: String,
     val address: String?,
-    val password: String?  // Simple password field
+    val password: String?,
+    val foto_profile: String? = null
 )
 
 data class UpdatePersonalInfoResponse(
@@ -79,17 +83,46 @@ interface ApiService {
     @GET("api/auth_api")
     fun getSession(@Query("token") token: String): Call<SessionResponse>
 
-    // 🔹 API untuk update personal information
+    // 🔹 API untuk update personal information (tanpa password)
     @POST("api/update_personal_info")
     fun updatePersonalInfo(
         @Query("token") token: String,
         @Body requestBody: UpdatePersonalInfoRequest
     ): Call<UpdatePersonalInfoResponse>
 
+    // 🔹 API untuk Change Password (terpisah)
+    @POST("api/change_password")
+    fun changePassword(
+        @Query("token") token: String,
+        @Body requestBody: ChangePasswordRequest
+    ): Call<ChangePasswordResponse>
+
     // 🔹 API untuk Forgot Password (single endpoint with action)
     @POST("api/forgot_password")
     fun forgotPassword(@Body requestBody: ForgotPasswordRequest): Call<ForgotPasswordResponse>
+
+    // 🔹 API untuk Notifications
+    @GET("api/notifications")
+    fun getNotifications(@Query("user_id") userId: Int): Call<NotificationResponse>
+
+    @POST("api/notifications")
+    fun createNotification(@Body requestBody: CreateNotificationRequest): Call<CreateNotificationResponse>
+
+    @PATCH("api/notifications")
+    fun markNotificationAsRead(@Body requestBody: MarkReadRequest): Call<MarkReadResponse>
 }
+
+// --- Change Password ---
+data class ChangePasswordRequest(
+    val token: String,
+    val current_password: String,
+    val new_password: String
+)
+
+data class ChangePasswordResponse(
+    val status: String,
+    val message: String
+)
 
 // --- Forgot Password ---
 data class ForgotPasswordRequest(
@@ -105,4 +138,37 @@ data class ForgotPasswordResponse(
     val message: String,
     val token: String? = null    // Token untuk reset password (dari verify_otp)
 )
+
+// --- Notification ---
+data class NotificationResponse(
+    val status: String,
+    val message: String,
+    val data: List<AppNotification>?
+)
+
+data class CreateNotificationRequest(
+    val user_id: Int,
+    val pesanan_id: Int,
+    val tipe_notif: String,
+    val pesan: String
+)
+
+data class CreateNotificationResponse(
+    val status: String,
+    val message: String,
+    val data: AppNotification?
+)
+
+data class MarkReadRequest(
+    val notif_id: Int? = null,
+    val user_id: Int? = null,
+    val mark_all: Boolean? = null
+)
+
+data class MarkReadResponse(
+    val status: String,
+    val message: String,
+    val data: Any?
+)
+
 
